@@ -1,0 +1,30 @@
+{
+  "name": "@cela/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Standalone browser/API end-to-end harness for cela2027. Intentionally NOT a root npm workspace: its own lockfile, no coupling to the app dependency graph.",
+  "scripts": {
+    "check": "npm run check:baseline && npm run check:fixtures && npm run check:container",
+    "check:baseline": "node scripts/check-baseline.mjs",
+    "check:fixtures": "node scripts/check-fixtures.mjs",
+    "check:container": "node scripts/check-container.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:proxy": "node --test \"proxy/*.test.mjs\" \"mock-api/*.test.mjs\"",
+    "proxy": "node proxy/fault-proxy.mjs",
+    "mock-api": "node mock-api/server.mjs",
+    "record:fixture": "node scripts/record-fixture.mjs",
+    "calibrate": "node scripts/calibrate-retry.mjs",
+    "test:mocked": "playwright test --project=mocked-app-api",
+    "test:integration": "playwright test --project=integration",
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.6.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

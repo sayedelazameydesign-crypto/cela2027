@@ -1,0 +1,237 @@
+{
+  "measuredAt": "2026-09-27T15:11:42.856Z",
+  "environment": {
+    "node": "v22.22.3",
+    "platform": "linux x64 6.1.158+",
+    "cpus": 2,
+    "appCommit": "14e7fc2f2de41767348fb2b0810f5d4db9e633f7",
+    "appUrl": "http://127.0.0.1:3000",
+    "samplesPerMeasurement": 15,
+    "appMode": "next start (production build), OfflinePlanner"
+  },
+  "measurements": {
+    "pageLoadMs": {
+      "n": 15,
+      "min": 2.4,
+      "p50": 3,
+      "p95": 15.4,
+      "max": 15.4,
+      "mean": 4.1
+    },
+    "apiDirectMs": {
+      "n": 15,
+      "min": 2.2,
+      "p50": 2.5,
+      "p95": 5.2,
+      "max": 5.2,
+      "mean": 3
+    },
+    "apiProxiedMs": {
+      "n": 15,
+      "min": 2.8,
+      "p50": 3.3,
+      "p95": 7.1,
+      "max": 7.1,
+      "mean": 3.7
+    },
+    "createTaskMs": {
+      "n": 15,
+      "min": 3,
+      "p50": 4,
+      "p95": 8,
+      "max": 8,
+      "mean": 4.2
+    },
+    "taskWallMs": {
+      "n": 15,
+      "min": 38,
+      "p50": 40,
+      "p95": 71,
+      "max": 71,
+      "mean": 46.1
+    },
+    "timeToSandboxRequestMs": {
+      "n": 15,
+      "min": 3,
+      "p50": 4,
+      "p95": 34,
+      "max": 34,
+      "mean": 9.4
+    },
+    "sandboxRoundtripMs": {
+      "n": 15,
+      "min": 28,
+      "p50": 29,
+      "p95": 29,
+      "max": 29,
+      "mean": 28.8
+    },
+    "sseFirstEventMs": {
+      "n": 15,
+      "min": 2,
+      "p50": 3,
+      "p95": 4,
+      "max": 4,
+      "mean": 3
+    },
+    "interEventGapMs": {
+      "n": 240,
+      "min": 0,
+      "p50": 0,
+      "p95": 0,
+      "max": 1,
+      "mean": 0
+    },
+    "sseCompleteMs": {
+      "n": 15,
+      "min": 6,
+      "p50": 8,
+      "p95": 10,
+      "max": 10,
+      "mean": 7.6
+    },
+    "serverStartMs": {
+      "n": 3,
+      "min": 809,
+      "p50": 822,
+      "p95": 954,
+      "max": 954,
+      "mean": 861.7
+    },
+    "proxyOverheadMs": {
+      "n": 15,
+      "min": 0,
+      "p50": 0.7,
+      "p95": 2.5,
+      "max": 2.5,
+      "mean": 0.8
+    }
+  },
+  "faultRecovery": [
+    {
+      "fault": "fail-next",
+      "schedule": [
+        250,
+        500,
+        1000
+      ],
+      "attemptsToSucceed": 2,
+      "totalMs": 258,
+      "attemptErrors": [
+        "POST http://127.0.0.1:40379/api/task → 503 {\"error\":\"injected by fault-proxy\"}"
+      ]
+    },
+    {
+      "fault": "drop",
+      "schedule": [
+        250,
+        500,
+        1000
+      ],
+      "attemptsToSucceed": 2,
+      "totalMs": 258,
+      "attemptErrors": [
+        "fetch failed"
+      ]
+    },
+    {
+      "fault": "fail-next",
+      "schedule": [
+        500,
+        1000,
+        2000
+      ],
+      "attemptsToSucceed": 2,
+      "totalMs": 507,
+      "attemptErrors": [
+        "POST http://127.0.0.1:40379/api/task → 503 {\"error\":\"injected by fault-proxy\"}"
+      ]
+    },
+    {
+      "fault": "drop",
+      "schedule": [
+        500,
+        1000,
+        2000
+      ],
+      "attemptsToSucceed": 2,
+      "totalMs": 507,
+      "attemptErrors": [
+        "fetch failed"
+      ]
+    }
+  ],
+  "delayProbe": {
+    "below": {
+      "delayMs": 1000,
+      "clientTimeoutMs": 2000,
+      "outcome": "completed",
+      "elapsedMs": 1008
+    },
+    "above": {
+      "delayMs": 4000,
+      "clientTimeoutMs": 2000,
+      "outcome": "timed-out",
+      "elapsedMs": 2002,
+      "error": "This operation was aborted"
+    }
+  },
+  "derived": {
+    "mockInterEventDelayMs": {
+      "value": 10,
+      "formula": "max(10, p50(interEventGapMs))"
+    },
+    "pollIntervalMs": {
+      "value": 25,
+      "formula": "clamp(p50(interEventGapMs), 25, 250)"
+    },
+    "apiRequestTimeoutMs": {
+      "value": 2000,
+      "formula": "ceil500(max(2000, 10 × p95(apiProxiedMs)))"
+    },
+    "proxyDelayBelowTimeoutMs": {
+      "value": 1000,
+      "formula": "apiRequestTimeoutMs / 2",
+      "verified": "completed"
+    },
+    "proxyDelayAboveTimeoutMs": {
+      "value": 4000,
+      "formula": "apiRequestTimeoutMs × 2",
+      "verified": "timed-out"
+    },
+    "retrySchedule": {
+      "value": [
+        250,
+        500,
+        1000
+      ],
+      "formula": "base = ceil50(max(250, 2 × p95(createTaskMs))); [base, 2·base, 4·base]",
+      "recoveredWithin": "2 attempts under fail-next/drop"
+    },
+    "expectTimeoutMs": {
+      "value": 5000,
+      "formula": "max(5000, ceil1000(3 × (fixtureEvents × mockInterEventDelayMs + p95(pageLoadMs))))",
+      "fixtureEvents": 18
+    },
+    "taskCompletionTimeoutMs": {
+      "value": 75000,
+      "formula": "appSandboxTimeoutMs + 15000",
+      "source": "apps/web/lib/agent-runtime.ts server-side sandbox wait = 60000 ms (app constant; Pyodide CDN load is not measurable in this environment)"
+    },
+    "testTimeoutMs": {
+      "value": 95000,
+      "formula": "taskCompletionTimeoutMs + expectTimeoutMs + 15000"
+    },
+    "webServerTimeoutMs": {
+      "value": 30000,
+      "formula": "ceil5000(max(30000, 10 × max(serverStartMs)))"
+    },
+    "playwrightRetries": {
+      "value": {
+        "local": 0,
+        "ci": 1
+      },
+      "formula": "0 locally so flakes surface; 1 in CI for infrastructure hiccups — revisit from repeat-each runs recorded in docs/E2E_BASELINE.md"
+    }
+  }
+}

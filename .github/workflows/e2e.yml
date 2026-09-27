@@ -1,0 +1,92 @@
+name: E2E
+
+# Independent E2E track (docs/E2E_PLAN.md). Runs beside the regular CI workflow
+# and never edits it. Browser jobs execute inside the Playwright container that
+# is pinned by digest in e2e/baseline.json (guarded by check-container.mjs).
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      repeat_each:
+        description: "Repeat each browser test N times (flake / retry calibration)"
+        required: false
+        default: "1"
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  guards:
+    name: guards (baseline · fixtures · container · proxy · mock)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # check-baseline.mjs needs E2E_BASE_SHA reachable from HEAD.
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install e2e harness (own lockfile)
+        run: npm ci --prefix e2e --no-fund --no-audit
+      - name: Baseline pin
+        run: node e2e/scripts/check-baseline.mjs
+      - name: Fixture attributes + bytes
+        run: node e2e/scripts/check-fixtures.mjs
+      - name: Container pin (offline + registry digest)
+        run: node e2e/scripts/check-container.mjs --online
+      - name: Typecheck tests
+        run: npm run typecheck --prefix e2e
+      - name: Proxy + mock-api unit tests
+        run: npm run test:proxy --prefix e2e
+
+  browser:
+    name: ${{ matrix.project }}
+    needs: guards
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Two independent jobs: mocked API vs. real application (docs/E2E_PLAN.md §2).
+        project: [mocked-app-api, integration]
+    container:
+      image: mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
+    steps:
+      - uses: actions/checkout@v4
+      - name: Container facts (evidence)
+        run: |
+          echo "node=$(node -v) npm=$(npm -v)"
+          sed -n '1,2p' /etc/os-release
+          echo "PLAYWRIGHT_BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH}"
+          ls "${PLAYWRIGHT_BROWSERS_PATH}"
+      - name: Install app dependencies (no root lockfile at E2E_BASE_SHA)
+        run: npm install --no-fund --no-audit
+      - name: Install e2e harness (own lockfile)
+        run: npm ci --prefix e2e --no-fund --no-audit
+      - name: Playwright version parity with the container
+        run: npx playwright --version
+        working-directory: e2e
+      - name: Build application (production)
+        run: npx next build
+        working-directory: apps/web
+        env:
+          OPENROUTER_API_KEY: ""
+      - name: Playwright — ${{ matrix.project }}
+        run: npx playwright test --project=${{ matrix.project }} --repeat-each=${{ inputs.repeat_each || 1 }}
+        working-directory: e2e
+        env:
+          CI: "1"
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-${{ matrix.project }}
+          path: |
+            e2e/playwright-report
+            e2e/test-results
+          if-no-files-found: ignore
+          retention-days: 14

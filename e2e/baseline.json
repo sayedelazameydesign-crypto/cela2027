@@ -1,0 +1,31 @@
+{
+  "$comment": "Single machine-readable source of truth for the E2E track. docs/E2E_BASELINE.md must agree with it (enforced by scripts/check-baseline.mjs and scripts/check-container.mjs).",
+  "E2E_BASE_SHA": "eff05290adc648aa09e4e51b53d48a7d32313882",
+  "E2E_BASE_REF": "origin/main",
+  "E2E_BRANCH": "arena/01a0e34e-cela2027",
+  "pinnedAt": "2026-09-27",
+  "UI_U0_BASE_SHA": null,
+  "playwright": {
+    "package": "@playwright/test",
+    "version": "1.63.0",
+    "chromium": "153.0.8010.12"
+  },
+  "container": {
+    "registry": "mcr.microsoft.com",
+    "repository": "playwright",
+    "tag": "v1.63.0-noble",
+    "digest": "sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27",
+    "mediaType": "application/vnd.oci.image.index.v1+json",
+    "platformDigests": {
+      "linux/amd64": "sha256:bc6ab0d6d44ff4826e4cb8c1e6d801e185bfc42bb0753f8e2a30efc70db054c7",
+      "linux/arm64": "sha256:a0f4498920a5dbac63196d9140ed738ef00470f27e2e74029abd8850b7bd5717"
+    },
+    "createdAt": "2026-09-04T23:48:51Z",
+    "source": "https://mcr.microsoft.com/api/v1/catalog/playwright/tags?reg=mar",
+    "retrievedAt": "2026-09-27",
+    "pulledLocally": false,
+    "verifiedBy": "CI job pulls image@digest; scripts/check-container.mjs --online compares Docker-Content-Digest",
+    "node": "24",
+    "user": "root (image has no USER directive; pwuser exists)"
+  }
+}
