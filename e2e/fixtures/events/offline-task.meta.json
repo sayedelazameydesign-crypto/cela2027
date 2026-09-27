@@ -1,0 +1,69 @@
+{
+  "name": "offline-task",
+  "recordedAt": "2026-09-27T15:02:27.337Z",
+  "durationMs": 208,
+  "app": {
+    "baseUrl": "http://127.0.0.1:3000",
+    "commit": "37f4d6ec1f9153525173d5aedebf0f38ec20f796",
+    "planner": "OfflinePlanner (no OPENROUTER_API_KEY)"
+  },
+  "request": {
+    "goal": "ابنِ لي مشروع Python فيه أدوات رياضية مع اختبارات وشغّلها"
+  },
+  "taskId": "21435480",
+  "captureMode": "incremental-polling",
+  "pollIntervalMs": 100,
+  "polls": 2,
+  "events": {
+    "count": 18,
+    "firstSeq": 0,
+    "lastSeq": 17,
+    "gaps": [],
+    "byType": {
+      "task_started": 1,
+      "task_status": 3,
+      "plan_created": 1,
+      "agent_message": 1,
+      "step_started": 2,
+      "step_finished": 2,
+      "artifact": 6,
+      "sandbox_request": 1,
+      "task_finished": 1
+    }
+  },
+  "finalStatus": "VERIFIED",
+  "summary": "كل الخطوات التنفيذية موثقة بالأدلة",
+  "sandbox": [
+    {
+      "runId": "21435480:c1b398",
+      "ok": true,
+      "stdout": "add(2,3) = 5\nfib(10) = 55\nmean = 2.5\nALL TESTS PASSED",
+      "stderr": "",
+      "durationMs": 14,
+      "executor": "Python 3.11.2",
+      "serverAccepted": true,
+      "role": "recorder emulates the browser sandbox client; server never ran the code"
+    }
+  ],
+  "files": {
+    "celia_app/math_tools.py": {
+      "bytes": 326
+    },
+    "celia_app/test_math_tools.py": {
+      "bytes": 216
+    },
+    "celia_app/README.md": {
+      "bytes": 163
+    }
+  },
+  "artifactsMatchFiles": true,
+  "ndjson": {
+    "file": "e2e/fixtures/events/offline-task.ndjson",
+    "bytes": 6240,
+    "sha256": "8338b5d00481f08bdc9dae3431e95398f5cde4dfd0fbda4b47142f0458186387"
+  },
+  "recorder": {
+    "node": "v22.22.3",
+    "platform": "linux 6.1.158+"
+  }
+}

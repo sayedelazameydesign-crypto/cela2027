@@ -61,8 +61,17 @@ node e2e/scripts/check-baseline.mjs
 
 | المفتاح | القيمة |
 |---|---|
-| الملف | `e2e/fixtures/events/offline-task.ndjson` |
-| الحالة | **يُسجَّل في المرحلة 2** — تُملأ القيم من `offline-task.meta.json` بعد التسجيل |
+| الملف | `e2e/fixtures/events/offline-task.ndjson` (+ `offline-task.meta.json`) |
+| المصدر | تسجيل حي من التطبيق الحقيقي (`next start`) بعد `POST /api/task` عبر `GET /api/task/:id/events?after=<seq>` تدريجيًا |
+| الهدف | `ابنِ لي مشروع Python فيه أدوات رياضية مع اختبارات وشغّلها` (`OfflinePlanner`) |
+| `taskId` | `21435480` |
+| الأحداث | 18 حدثًا، `seq` 0..17 بلا فجوات (`artifact` ×6 لأن المسجِّل التقط بث الخطوة 1 قبل إعادة البث في الخطوة 2) |
+| الحالة النهائية | `VERIFIED` — «كل الخطوات التنفيذية موثقة بالأدلة» |
+| دور الصندوق | المسجِّل نفسه (CPython 3.11.2 على الملفات المُنتَجة) → `ALL TESTS PASSED`؛ الخادم قبِل النتيجة (`serverAccepted: true`) ولم ينفّذ أي كود |
+| الملفات النهائية | 3 (`celia_app/math_tools.py` 326B، `test_math_tools.py` 216B، `README.md` 163B) — تطابق `artifact` events |
+| البايتات | 6240 بايت، `sha256 8338b5d00481f08bdc9dae3431e95398f5cde4dfd0fbda4b47142f0458186387` |
+| السمات (فعلي) | `git check-attr text` → `unset`؛ `diff` → `set`؛ blob الفهرس `6c88b080…` == `git hash-object --no-filters` |
+| التحقق | `node e2e/scripts/check-fixtures.mjs` ✅؛ اختبار سلبي: حقن `CRLF` + سطر إضافي ⇒ فشل بثلاثة انتهاكات (blob، sha256، CR) ثم استُعيد الملف |
 
 ## 6. معايرة retry
 
