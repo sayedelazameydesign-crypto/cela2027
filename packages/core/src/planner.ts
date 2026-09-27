@@ -6,11 +6,19 @@
  *    (same spirit as Celia v2.5's "Offline Simulation" mode)
  */
 
-import { openRouterChat, isOpenRouterConfigured } from "@cela/llm";
+import {
+  OpenRouterProvider,
+  GeminiProvider,
+  ProviderFabric,
+  isOpenRouterConfigured,
+  isGeminiConfigured,
+  type ChatMessage,
+} from "@cela/llm";
 import type { Plan, PlannedStep } from "./events.js";
 
 export interface Planner {
   plan(goal: string, context?: string): Promise<Plan>;
+  replanStep?(failedStep: PlannedStep, error: string, context?: string): Promise<PlannedStep>;
 }
 
 const SYSTEM_PROMPT = `أنت مخطِّط وكيل برمجي ذكي (cela2027).
@@ -32,21 +40,95 @@ const SYSTEM_PROMPT = `أنت مخطِّط وكيل برمجي ذكي (cela2027)
 5. أعد JSON فقط بهذا الشكل:
 {"summary":"...","steps":[{"tool":"write","args":{"path":"...","content":"..."},"title":"..."}]}`;
 
-export class OpenRouterPlanner implements Planner {
-  constructor(private models?: string[]) {}
+export class FabricPlanner implements Planner {
+  private fabric: ProviderFabric;
+  private providerOrder: string[];
+
+  constructor(opts?: { fabric?: ProviderFabric; providerOrder?: string[]; models?: string[] }) {
+    this.fabric =
+      opts?.fabric ??
+      new ProviderFabric([new OpenRouterProvider(), new GeminiProvider()]);
+    this.providerOrder = opts?.providerOrder ?? ["openrouter", "gemini"];
+  }
 
   async plan(goal: string, context?: string): Promise<Plan> {
     const userMsg = context
       ? `الهدف: ${goal}\n\nسياق إضافي:\n${context}`
       : `الهدف: ${goal}`;
-    const text = await openRouterChat(
-      [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: userMsg },
-      ],
-      { models: this.models, temperature: 0.2, maxTokens: 8000 }
-    );
-    return parsePlan(text);
+    const messages: ChatMessage[] = [
+      { role: "system", content: SYSTEM_PROMPT },
+      { role: "user", content: userMsg },
+    ];
+    const res = await this.fabric.generate({
+      providerOrder: this.providerOrder,
+      messages,
+      options: { temperature: 0.2, maxTokens: 8000 },
+    });
+    return parsePlan(res.text);
+  }
+
+  async replanStep(
+    failedStep: PlannedStep,
+    error: string,
+    context?: string
+  ): Promise<PlannedStep> {
+    const prompt = `الخطوة "${failedStep.title}" (${failedStep.tool}) فشلت بالخطأ التالي:\n${error}\n\nبيانات الخطوة الحالية:\n${JSON.stringify(
+      failedStep
+    )}\n\n${context ? `سياق إضافي:\n${context}\n\n` : ""}أعد فقط كائن JSON للخطوة المصححة بدون أي نص إضافي:
+{"tool":"${failedStep.tool}","args":{...},"title":"..."}`;
+
+    const messages: ChatMessage[] = [
+      {
+        role: "system",
+        content:
+          "أنت مصحح خطوات وكيل برمجي ذكي. أعد كائن JSON فقط للخطوة المصححة.",
+      },
+      { role: "user", content: prompt },
+    ];
+
+    const res = await this.fabric.generate({
+      providerOrder: this.providerOrder,
+      messages,
+      options: { temperature: 0.1, maxTokens: 4000 },
+    });
+
+    const parsed = parseSingleStep(res.text);
+    return parsed ?? failedStep;
+  }
+}
+
+export function parseSingleStep(text: string): PlannedStep | null {
+  const trimmed = text.trim();
+  const candidates: string[] = [];
+  const fence = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fence) candidates.push(fence[1]);
+  const firstBrace = trimmed.indexOf("{");
+  const lastBrace = trimmed.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    candidates.push(trimmed.slice(firstBrace, lastBrace + 1));
+  }
+  candidates.push(trimmed);
+
+  for (const c of candidates) {
+    try {
+      const obj = JSON.parse(c);
+      if (obj && typeof obj.tool === "string") {
+        return {
+          tool: obj.tool,
+          args: obj.args && typeof obj.args === "object" ? obj.args : {},
+          title: typeof obj.title === "string" ? obj.title : obj.tool,
+        };
+      }
+    } catch {
+      /* try next candidate */
+    }
+  }
+  return null;
+}
+
+export class OpenRouterPlanner extends FabricPlanner {
+  constructor(models?: string[]) {
+    super({ providerOrder: ["openrouter"], models });
   }
 }
 
@@ -199,8 +281,11 @@ export class FallbackPlanner implements Planner {
 }
 
 export function createDefaultPlanner(models?: string[]): Planner {
-  if (isOpenRouterConfigured()) {
-    return new FallbackPlanner(new OpenRouterPlanner(models));
+  if (isOpenRouterConfigured() || isGeminiConfigured()) {
+    const order: string[] = [];
+    if (isOpenRouterConfigured()) order.push("openrouter");
+    if (isGeminiConfigured()) order.push("gemini");
+    return new FallbackPlanner(new FabricPlanner({ providerOrder: order, models }));
   }
   return new OfflinePlanner();
 }

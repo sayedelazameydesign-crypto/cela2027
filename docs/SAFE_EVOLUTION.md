@@ -42,7 +42,7 @@ Architecture dependency + alias boundaries
   → production build
 ```
 
-الحالة الحالية بعد تعميق الحراس ومرحلتي P1/P2: **53/53 اختبارًا محليًا** ناجحًا. اختبارات Gemini تستخدم HTTP mock ولا يوجد اختبار مزود حي في هذه المرحلة؛ حارس lockfile يستخدم `npm ci --dry-run`، بينما CI ينفذ `npm ci` فعليًا قبل البوابة.
+الحالة الحالية بعد تعميق الحراس ومرحلتي P1/P2 ثم تفعيل Tracks 1+2: **56/56 اختبارًا محليًا** ناجحًا. اختبارات Gemini تستخدم HTTP mock ولا يوجد اختبار مزود حي في هذه المرحلة؛ حارس lockfile يستخدم `npm ci --dry-run`، بينما CI ينفذ `npm ci` فعليًا قبل البوابة.
 
 لا تعني هذه البوابة وجود Browser E2E أو اتصال حي بالخدمات الخارجية. لا يجوز وصف هاتين البوابتين بالنجاح قبل إضافتهما فعليًا.
 
@@ -55,7 +55,7 @@ apps/web
   └─ @cela/sandbox    التحقق من طلبات الصندوق
 
 @cela/core
-  ├─ @cela/llm        Adapter OpenRouter المستخدم من Planner
+  ├─ @cela/llm        Adapter المزودات (ProviderFabric: OpenRouter → Gemini) المستخدم من Planner
   └─ @cela/tools      سجل عقود الأدوات
 
 leaf packages (لا تعتمد على Core أو Web)
@@ -131,8 +131,8 @@ leaf packages (لا تعتمد على Core أو Web)
 
 | الجزء | القرار الافتراضي | طريقة التوسعة الآمنة |
 |---|---|---|
-| `core/orchestrator` | **Freeze** | خيارات اختيارية أو Interfaces محقونة؛ لا شروط خاصة بالمزود |
-| `core/planner` | **Extend** | Planner جديد يطبّق `Planner` أو Adapter مزود جديد |
+| `core/orchestrator` | **Freeze + Extend** | خيارات اختيارية (`maxRetriesPerStep`) أو Interfaces محقونة؛ لا شروط خاصة بالمزود |
+| `core/planner` | **Extend** | Planner جديد يطبّق `Planner` أو Adapter مزود جديد؛ `replanStep` اختياري |
 | `core/policy` | **Freeze + Extend** | قواعد إضافية محافظة مع اختبارات allow/deny |
 | `core/tools-impl` | **Extend** | Tool contract + Policy + implementation + verifier معًا |
 | `core/verifier` | **Freeze** | Verifier جديد أو check إضافي؛ لا تخفيف الأدلة القائمة |
@@ -230,7 +230,32 @@ Default عند غياب الإعداد الجديد:
 
 أي تغيير عقد يحدّث نسخة الحزمة المالكة، واختبارات العقد، وتبعيات المستهلكين والـlockfile في التغيير نفسه. استخدام `"*"` الحالي لا يُعد بديلًا عن versioning عند بدء نشر الحزم خارج الـmonorepo.
 
-## 7. سجل المخاطر الحالي
+## 7. حلقة ReAct وتكامل المزودات (Tracks 1+2)
+
+أضيفت القدرة عبر خيارات اختيارية وواجهات محقونة، من دون كسر أي عقد سابق:
+
+### Core — `Planner.replanStep?(failedStep, error, context?)`
+
+- **اختياري بالكامل:** أي `Planner` قديم (بما فيه `OfflinePlanner`) يستمر في العمل. غياب `replanStep` يعني صفر استدراك، وهو السلوك الافتراضي.
+- **`OrchestratorOptions.maxRetriesPerStep`** قيمته الافتراضية `0`، أي أن سلوك التشغيل السابق محفوظ بايت ببايت عند عدم تمرير الخيار.
+- عند التكرار يُسجَّل حدث `step_retrying` في الـ Ledger بترتيب `append` متسلسل، لذا لا تنكسر سلسلة `prev`/`hash`. الاختبار `react-orchestrator.test.ts` يتحقق من `Ledger.verify().valid === true` بعد إعادة واحدة وبعد استنفاد المحاولات.
+- فشل `replanStep` نفسه لا يُسقط المهمة: تُحتفظ الخطوة الحالية وتُستهلك المحاولة.
+- السياسة (PolicyEngine) تُقيَّم على الخطوة قبل الدخول إلى حلقة الإعادة؛ الخطوات المصححة لا تتجاوز البوابة.
+
+### LLM/Core — `ProviderFabric` داخل `FabricPlanner`
+
+- `FabricPlanner` هو المسار الوحيد للمزودات داخل Core: لا شروط خاصة بمزود في `Orchestrator`، والترتيب يمرَّر صراحةً (`providerOrder`).
+- الترتيب الافتراضي: `openrouter` ثم `gemini`، ويُبنى ديناميكيًا من `isOpenRouterConfigured()` و`isGeminiConfigured()`. عند غياب المفتاحين يبقى `OfflinePlanner` هو الافتراضي (وضع المحاكاة يعمل بلا مفاتيح).
+- `FallbackPlanner` يُبقي السلوك التاريخي: فشل كل المزودات ⇒ هبوط إلى الخطة الحتمية مع سبب مفصح عنه في `summary`.
+- `OpenRouterPlanner` بقي موجودًا ويُفوَّض إلى `FabricPlanner` بترتيب `["openrouter"]` فقط، حفاظًا على التوافق المصدري.
+- لا يوجد اختبار مزود حي: الاختبارات تحاكي `ModelProvider` بالكامل (`vi.fn()`)، ولا شبكة حقيقية في CI.
+
+### اختبارات مثبتة لهذه المرحلة
+
+- `packages/llm/provider-fallback.test.ts`: التحول التلقائي OpenRouter → Gemini مع توثيق `providerAttempts`.
+- `packages/core/react-orchestrator.test.ts`: الفشل ⇒ `replanStep` ⇒ النجاح، واستنفاد المحاولات ⇒ `FAILED`، مع اتساق تجزئة الـ Ledger في الحالتين.
+
+## 8. سجل المخاطر الحالي
 
 هذه ملاحظات معمارية وليست مبررًا لإعادة البناء:
 
@@ -238,10 +263,10 @@ Default عند غياب الإعداد الجديد:
 2. **SSE ليس ضمان نقل دائم:** polling endpoint موجود كمسار استئناف، لكن التاريخ نفسه يحتاج Store دائمًا قبل اعتباره durable.
 3. **التخزين الخارجي اختياري وbest-effort:** يلزم integration tests حقيقية قبل الاعتماد عليه تشغيليًا.
 4. **لا Browser E2E حاليًا:** بناء Next واختبارات Route Handlers لا يثبتان Pyodide worker أو رحلة المستخدم كاملة.
-5. **OpenRouter live path غير داخل CI:** الاختبارات الحالية تثبت الفصل والعقود، لا توافر مزود خارجي.
+5. **مسارات المزودات الحية (OpenRouter/Gemini) غير داخل CI:** الاختبارات الحالية تثبت الفصل والعقود وسلوك التحول بين المزودات عبر محاكاة، لا توافر مزود خارجي فعلي.
 6. **لا version prefix للـAPI الحالي:** الميزات المتوافقة تضاف حاليًا، أما أي عقد غير متوافق مستقبلًا فيوضع تحت نسخة جديدة.
 
-## 8. تعريف الإنجاز
+## 9. تعريف الإنجاز
 
 لا تعتبر القدرة مكتملة لمجرد أن البناء نجح. الحد الأدنى:
 

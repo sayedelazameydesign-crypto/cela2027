@@ -24,17 +24,20 @@ export interface OrchestratorOptions {
   planner?: Planner;
   policy?: PolicyEngine;
   bridge: SandboxBridge;
+  maxRetriesPerStep?: number;
 }
 
 export class Orchestrator {
   private planner: Planner;
   private policy: PolicyEngine;
   private bridge: SandboxBridge;
+  private maxRetriesPerStep: number;
 
   constructor(opts: OrchestratorOptions) {
     this.planner = opts.planner ?? createDefaultPlanner();
     this.policy = opts.policy ?? new PolicyEngine();
     this.bridge = opts.bridge;
+    this.maxRetriesPerStep = opts.maxRetriesPerStep ?? 0;
   }
 
   /** run a full task; returns the workspace snapshot on success */
@@ -82,7 +85,7 @@ export class Orchestrator {
     let failed: string | null = null;
 
     for (let i = 0; i < plan.steps.length; i++) {
-      const step = plan.steps[i];
+      let step = plan.steps[i];
       const stepId = `s${i + 1}`;
 
       const decision = this.policy.evaluate(step, ws);
@@ -98,28 +101,55 @@ export class Orchestrator {
       emit({ type: "step_started", taskId, stepId, title: step.title, tool: step.tool });
       await ledger.append("step_started", { stepId, tool: step.tool, title: step.title });
 
-      let result;
-      let sandbox;
-      try {
-        if (step.tool === "python_run") {
-          const code = String(step.args.code ?? "");
-          sandbox = await this.bridge.requestRun(taskId, code);
-          result = {
-            ok: sandbox.ok,
-            output: sandbox.stdout || sandbox.stderr || "(بدون مخرجات)",
-            data: { runId: sandbox.runId },
-          };
-        } else {
-          result = await executeStep(step, tools, { taskId, bridge: this.bridge });
-        }
-      } catch (e: any) {
-        result = { ok: false, output: String(e?.message ?? e) };
-      }
+      let result: any;
+      let sandbox: any;
+      let evidence: any;
+      let status: StepStatus = "FAILED";
+      let attempt = 0;
 
-      const evidence = verifyStep({ step, result, sandbox }, ws);
-      const status: StepStatus = evidence.some((ev) => ev.checks.sandbox_ok === false) || !result.ok
-        ? "FAILED"
-        : "VERIFIED";
+      while (attempt <= this.maxRetriesPerStep) {
+        try {
+          if (step.tool === "python_run") {
+            const code = String(step.args.code ?? "");
+            sandbox = await this.bridge.requestRun(taskId, code);
+            result = {
+              ok: sandbox.ok,
+              output: sandbox.stdout || sandbox.stderr || "(بدون مخرجات)",
+              data: { runId: sandbox.runId },
+            };
+          } else {
+            result = await executeStep(step, tools, { taskId, bridge: this.bridge });
+          }
+        } catch (e: any) {
+          result = { ok: false, output: String(e?.message ?? e) };
+        }
+
+        evidence = verifyStep({ step, result, sandbox }, ws);
+        status = evidence.some((ev: any) => ev.checks.sandbox_ok === false) || !result.ok
+          ? "FAILED"
+          : "VERIFIED";
+
+        if (status === "VERIFIED" || attempt >= this.maxRetriesPerStep) {
+          break;
+        }
+
+        attempt++;
+        const failureReason = result.ok ? "فشل التحقق بالأدلة" : result.output;
+        await ledger.append("step_retrying", {
+          stepId,
+          attempt,
+          tool: step.tool,
+          error: failureReason,
+        });
+
+        if (this.planner.replanStep) {
+          try {
+            step = await this.planner.replanStep(step, failureReason);
+          } catch {
+            // retain existing step if replanStep fails
+          }
+        }
+      }
 
       emit({
         type: "step_finished",
@@ -127,7 +157,7 @@ export class Orchestrator {
         stepId,
         status,
         evidence,
-        error: result.ok ? undefined : result.output,
+        error: result?.ok ? undefined : result?.output,
       });
       await ledger.append("step_finished", { stepId, status, evidence });
       records.push({ tool: step.tool, status, evidence });
@@ -138,7 +168,7 @@ export class Orchestrator {
       }
 
       if (status === "FAILED") {
-        failed = `الخطوة ${stepId} (${step.tool}) فشلت: ${result.output.slice(0, 300)}`;
+        failed = `الخطوة ${stepId} (${step.tool}) فشلت: ${result?.output?.slice(0, 300) ?? ""}`;
         break;
       }
     }

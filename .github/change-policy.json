@@ -1,12 +1,9 @@
 {
-  "classification": "C",
-  "reason": "Add provider-neutral contracts, preserve OpenRouter compatibility, and introduce an isolated Gemini adapter without changing Core, Planner, or runtime routing.",
+  "classification": "B",
+  "reason": "Wire ProviderFabric into Core Planner with Gemini fallback and add ReAct self-correction retry loop to Orchestrator with ledger integrity.",
   "protectedChanges": [
-    "packages/llm/src/fabric.ts",
-    "packages/llm/src/index.ts",
-    "packages/llm/src/providers/gemini.ts",
-    "packages/llm/src/providers/openrouter.ts",
-    "packages/llm/src/types.ts"
+    "packages/core/src/orchestrator.ts",
+    "packages/core/src/planner.ts"
   ],
   "allowedBinaryChanges": []
 }
