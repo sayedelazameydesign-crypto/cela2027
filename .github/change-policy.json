@@ -1,12 +1,6 @@
 {
-  "classification": "C",
-  "reason": "Add provider-neutral contracts, preserve OpenRouter compatibility, and introduce an isolated Gemini adapter without changing Core, Planner, or runtime routing.",
-  "protectedChanges": [
-    "packages/llm/src/fabric.ts",
-    "packages/llm/src/index.ts",
-    "packages/llm/src/providers/gemini.ts",
-    "packages/llm/src/providers/openrouter.ts",
-    "packages/llm/src/types.ts"
-  ],
+  "classification": "A",
+  "reason": "Docs-only addition: measured project status (docs/STATUS.md) plus inline corrections of README claims it disproves. No runtime path, provider, planner, route handler, or contract is touched; P0 sandbox/workspace sync is deliberately deferred to a separate session behind its own Freeze - Characterize - Extend - Verify cycle.",
+  "protectedChanges": [],
   "allowedBinaryChanges": []
 }
