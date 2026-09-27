@@ -18,8 +18,14 @@ import {
   type SandboxRunResult,
   type Workspace,
   type Ledger,
+  captureCheckpoint,
+  restoreCheckpoint,
+  type TaskCheckpoint,
 } from "@cela/core";
-import { SupabaseStore, SupabaseEventJournal, type EventJournal, type Store } from "@cela/store";
+import {
+  SupabaseStore, SupabaseEventJournal, SupabaseSnapshotStore,
+  type EventJournal, type Store, type SnapshotStore,
+} from "@cela/store";
 
 export interface BufferedEvent {
   seq: number;
@@ -38,7 +44,7 @@ interface TaskRuntime {
   summary?: string;
 }
 
-const g = globalThis as unknown as { __celaRuntime?: Runtime; __celaStore?: Store; __celaJournal?: EventJournal<AgentEvent> };
+const g = globalThis as unknown as { __celaRuntime?: Runtime; __celaStore?: Store; __celaJournal?: EventJournal<AgentEvent>; __celaSnapshots?: SnapshotStore };
 
 function getStore(): Store | undefined {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -56,17 +62,33 @@ function getJournal(): EventJournal<AgentEvent> | undefined {
   return g.__celaJournal;
 }
 
+function getSnapshots(): SnapshotStore | undefined {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return undefined;
+  if (!g.__celaSnapshots) g.__celaSnapshots = new SupabaseSnapshotStore(url, key);
+  return g.__celaSnapshots;
+}
+
 export class Runtime {
   tasks = new Map<string, TaskRuntime>();
   /** runId → resolver */
   pendingSandbox = new Map<string, (r: SandboxRunResult) => void>();
   store?: Store;
   journal?: EventJournal<AgentEvent>;
+  snapshots?: SnapshotStore;
   private writes = new Map<string, Promise<void>>();
 
-  constructor(options: { store?: Store; journal?: EventJournal<AgentEvent> } = {}) {
+  constructor(options: { store?: Store; journal?: EventJournal<AgentEvent>; snapshots?: SnapshotStore } = {}) {
     this.store = options.store ?? getStore();
     this.journal = options.journal ?? getJournal();
+    this.snapshots = options.snapshots ?? getSnapshots();
+  }
+
+  /** Inspection-only restoration: does not resume execution or sandbox resolvers. */
+  async loadCheckpoint(taskId: string): Promise<Awaited<ReturnType<typeof restoreCheckpoint>> | undefined> {
+    const snapshot = await this.snapshots?.loadSnapshot(taskId);
+    return snapshot ? restoreCheckpoint(snapshot as TaskCheckpoint) : undefined;
   }
 
   /** Wait until the local event queue has flushed (also used by polling/SSE replay). */
@@ -188,6 +210,17 @@ export class Runtime {
         if (t2) {
           t2.workspace = res.workspace;
           t2.ledger = res.ledger;
+        }
+        if (this.snapshots) {
+          try {
+            const completedSteps = res.ledger.export().filter((entry) => entry.type === "step_finished").length;
+            const snapshot = await captureCheckpoint(id, goal, res.status, completedSteps, res.workspace, res.ledger);
+            await this.snapshots.saveSnapshot(snapshot);
+          } catch (error) {
+            // The task has already emitted a terminal event. Do not rewrite its verified
+            // status on snapshot failure; callers loading the snapshot will see the error.
+            console.error("Failed to persist task checkpoint", id, error);
+          }
         }
       }).catch(async (error: unknown) => {
         const t2 = this.tasks.get(id);

@@ -1,4 +1,6 @@
 export * from "./journal";
+export * from "./types";
+export * from "./persistent_store";
 
 /**
  * Persistence layer.

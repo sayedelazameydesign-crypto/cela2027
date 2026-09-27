@@ -1,19 +1,24 @@
 {
   "classification": "B",
-  "reason": "Add additive server-side EventJournal persistence and cross-instance task replay, preserving existing polling and file envelopes while documenting serverless execution limits.",
+  "reason": "Add bounded inspection-only task checkpoints with verified ledger rehydration, binary workspace restoration, and opt-in Supabase snapshot adapter without a reverse Core-to-Store dependency.",
   "protectedChanges": [
     "apps/web/app/api/task/[id]/events/route.ts",
     "apps/web/app/api/task/[id]/files/route.ts",
     "apps/web/app/api/task/[id]/stream/route.ts",
     "apps/web/app/api/task/route.ts",
     "apps/web/lib/agent-runtime.ts",
+    "packages/core/src/checkpoint.ts",
     "packages/core/src/events.ts",
     "packages/core/src/executor.ts",
+    "packages/core/src/index.ts",
     "packages/core/src/orchestrator.ts",
     "packages/core/src/planner.ts",
     "packages/core/src/workspace.ts",
     "packages/store/src/index.ts",
-    "packages/store/src/journal.ts"
+    "packages/store/src/journal.ts",
+    "packages/store/src/persistent_store.ts",
+    "packages/store/src/schema.sql",
+    "packages/store/src/types.ts"
   ],
   "allowedBinaryChanges": []
 }
