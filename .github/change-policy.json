@@ -1,0 +1,6 @@
+{
+  "classification": "E",
+  "reason": "Establish compatibility, architecture, lockfile, and changed-file gates without modifying protected runtime behavior.",
+  "protectedChanges": [],
+  "allowedBinaryChanges": []
+}
