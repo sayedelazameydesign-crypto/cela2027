@@ -1,0 +1,11 @@
+{
+  "classification": "A",
+  "reason": "Write at least 20 characters explaining WHAT changed and WHY it is safe: which contracts are affected, what the safe default is, and what the rollback path is.",
+  "protectedPatterns": [
+    "^packages/[^/]+/src/",
+    "^apps/[^/]+/app/api/(?:.*\\/)?route\\.ts$",
+    "^src/"
+  ],
+  "protectedChanges": [],
+  "allowedBinaryChanges": []
+}

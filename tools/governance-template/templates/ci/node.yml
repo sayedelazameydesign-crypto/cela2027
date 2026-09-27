@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Required: the change-policy guard compares the full PR with its base.
+          # Without it (or on a shallow clone) the guard silently reports "0 changed".
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install reproducibly
+        run: npm ci --no-fund --no-audit
+      - name: Compatibility gate
+        run: node scripts/verify.mjs
+        env:
+          # build-time placeholders only; real secrets live in the deploy env
+          OPENROUTER_API_KEY: ""

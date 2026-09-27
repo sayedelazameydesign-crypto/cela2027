@@ -1,0 +1,10 @@
+{
+  "classification": "A",
+  "reason": "Additive governance layer only: change-policy guard (Python port), dependency-free import-boundary guard, single verify gate runner, gate configuration, measured status report, CI fetch-depth fix and .ci-sandbox ignore. No file under core/ is touched, no dependency is added, and the runtime contracts (Kernel, Policy, Verifier, EventLedger, CLI exit codes) are unchanged.",
+  "protectedPatterns": [
+    "^core/.*\\.py$",
+    "^demo\\.py$"
+  ],
+  "protectedChanges": [],
+  "allowedBinaryChanges": []
+}
