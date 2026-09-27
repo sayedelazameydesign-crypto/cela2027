@@ -7,7 +7,7 @@
  */
 
 import { openRouterChat, isOpenRouterConfigured } from "@cela/llm";
-import type { Plan, PlannedStep } from "./events";
+import type { Plan, PlannedStep } from "./events.js";
 
 export interface Planner {
   plan(goal: string, context?: string): Promise<Plan>;
@@ -173,7 +173,34 @@ export class OfflinePlanner implements Planner {
   }
 }
 
+/**
+ * FallbackPlanner — tries the LLM planner first; if OpenRouter fails
+ * entirely (quota exhausted, all models down), degrades gracefully to
+ * the deterministic offline plan instead of failing the task.
+ * (Roadmap Phase 3: quota guard — no silent failures.)
+ */
+export class FallbackPlanner implements Planner {
+  constructor(
+    private primary: Planner,
+    private fallback: Planner = new OfflinePlanner()
+  ) {}
+
+  async plan(goal: string, context?: string): Promise<Plan> {
+    try {
+      return await this.primary.plan(goal, context);
+    } catch (e: any) {
+      const plan = await this.fallback.plan(goal, context);
+      return {
+        ...plan,
+        summary: `⚠ تعذر استخدام OpenRouter (${String(e?.message ?? e).slice(0, 160)}) — تم التحويل تلقائياً إلى وضع المحاكاة المحلية.\n\n${plan.summary}`,
+      };
+    }
+  }
+}
+
 export function createDefaultPlanner(models?: string[]): Planner {
-  if (isOpenRouterConfigured()) return new OpenRouterPlanner(models);
+  if (isOpenRouterConfigured()) {
+    return new FallbackPlanner(new OpenRouterPlanner(models));
+  }
   return new OfflinePlanner();
 }
