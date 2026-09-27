@@ -1,2 +1,71 @@
-# cela2027
-Cela 2027 — وكيل ذكاء اصطناعي مستقل: وكيل برمجي كامل + صندوق Python معزول + واجهة عربية بأسلوب مانوس، بمخّ OpenRouter. Autonomous AI agent: Claude-grade coding agent + Pyodide sandbox + Manus-style Arabic UI.
+# Cela 2027
+
+<p align="center"><b>وكيل ذكاء اصطناعي مستقل — يخطط، ينفّذ، يتحقق بالأدلة.</b></p>
+
+Cela 2027 نظام وكيل ذكي بأسلوب مانوس (Manus) وعقل كلود (Claude): واجهة ويب عربية داكنة حيث تكتب هدفاً، فيخطط الوكيل خطواته علنياً، ينفّذها (كتابة/تعديل ملفات + تشغيل Python في صندوق معزول)، ثم **لا يعلن اكتمال المهمة إلا بعد تحقق مستقل بالأدلة** — نفس فلسفة مستودع [agi-system](https://github.com/sayedelazameydesign-crypto/agi-system): «لا ادعاءات بدون أدلة».
+
+## المزايا
+
+- **حلقة وكيل كاملة:** Goal → Plan → Policy → Execute → Verify → Evidence → Ledger
+- **وكيل برمجي:** أدوات `read / ls / write / edit / patch / scaffold_project` داخل مساحة عمل معزولة (احتواء مسارات صارم ضد `../`)
+- **صندوق Python:** تنفيذ داخل متصفح المستخدم عبر Pyodide (WASM) — عزل حقيقي وتكلفة سيرفر صفرية
+- **سجل أحداث مُهاش:** سلسلة SHA-256 غير قابلة للتعديل — `replay` و`verify` لكل مهمة
+- **مخّ OpenRouter:** مفتاح واحد يفتح Claude وGPT وGemini مع توجيه تلقائي وبدائل عند الفشل
+- **وضع محاكاة محلية:** يعمل كامل الواجهة والحلقة بدون أي مفتاح API (للتجربة والعرض)
+- **واجهة عربية RTL داكنة:** دردشة + خطوط زمن حية + عارض ملفات + تنزيل المشروع المُنتَج
+
+## البنية
+
+```
+cela2027/
+├── apps/web/            واجهة Next.js 15 + Tailwind (عربية RTL، داكنة)
+│   ├── app/api/task/    إنشاء المهام + بث SSE + جسر الصندوق + الملفات
+│   └── public/pyodide-worker.js   صندوق Python في المتصفح
+├── packages/core/       النواة: orchestrator, policy, ledger, planner, verifier, workspace
+├── packages/llm/        عميل OpenRouter (توجيه موديلات + fallback)
+├── packages/sandbox/    واجهة Sandbox الموحدة (Pyodide الآن / Docker لاحقاً)
+├── packages/store/      طبقة التخزين (ذاكرة الآن / Supabase لاحقاً)
+└── docs/ARCHITECTURE.md وثائق البنية
+```
+
+## التشغيل السريع
+
+```bash
+# 1) التثبيت
+npm install
+
+# 2) (اختياري) مفتاح OpenRouter للمخطِّط الذكي — بدونه يعمل وضع المحاكاة
+cp .env.example .env.local   # ثم ضع OPENROUTER_API_KEY من https://openrouter.ai/keys
+
+# 3) الاختبارات (21 اختباراً للنواة)
+npm test
+
+# 4) التشغيل
+npm run dev    # ثم افتح http://localhost:3000
+```
+
+## النشر المجاني (بدون بطاقة)
+
+1. **Vercel Hobby** (مجاني بدون بطاقة): اربط المستودع من [vercel.com/new](https://vercel.com/new) — إعدادات افتراضية لمشروع Next.js.
+2. أضف `OPENROUTER_API_KEY` في Environment Variables (المفتاح يبقى في السيرفر فقط).
+3. (اختياري) **Supabase Free** للتخزين الدائم لاحقاً — واجهة `@cela/store` جاهزة للتبديل.
+
+## القاعدة الذهبية
+
+> لا حالة تُعلن `VERIFIED` إلا بعد أن يقرأ المُتحقِّق مساحة العمل بنفسه ويشهد على الأدلة — لا يثق أبداً بما يدّعيه المنفّذ أو النموذج.
+
+## حالة المشروع (v1)
+
+| القدرة | الحالة |
+|---|---|
+| حلقة الوكيل + بث SSE | ✓ تعمل |
+| أدوات الملفات المعزولة | ✓ تعمل |
+| صندوق Pyodide بالمتصفح | ✓ يعمل |
+| سجل مُهاش + تحقق بالأدلة | ✓ يعمل |
+| مخطِّط OpenRouter | ✓ (يعمل بوضع المحاكاة بدون مفتاح) |
+| تصفح الإنترنت | مؤجل للمرحلة 2 |
+| الوكلاء المتعددون / التحسين الذاتي (SICA) | مؤجل |
+
+## الترخيص
+
+MIT © 2026
