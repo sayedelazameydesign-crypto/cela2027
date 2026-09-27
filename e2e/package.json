@@ -10,7 +10,7 @@
     "check:fixtures": "node scripts/check-fixtures.mjs",
     "check:container": "node scripts/check-container.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test:proxy": "node --test proxy/ mock-api/",
+    "test:proxy": "node --test \"proxy/*.test.mjs\" \"mock-api/*.test.mjs\"",
     "proxy": "node proxy/fault-proxy.mjs",
     "mock-api": "node mock-api/server.mjs",
     "record:fixture": "node scripts/record-fixture.mjs",
