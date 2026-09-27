@@ -9,7 +9,7 @@
 html,
 body {
   height: 100%;
-  background: #0b0d12;
+  background: #050816;
 }
 
 /* subtle scrollbars for the dark workspace */
@@ -18,7 +18,7 @@ body {
   height: 8px;
 }
 *::-webkit-scrollbar-thumb {
-  background: #2b3247;
+  background: rgba(34, 211, 238, 0.25);
   border-radius: 8px;
 }
 *::-webkit-scrollbar-track {
@@ -30,4 +30,12 @@ code {
   direction: ltr;
   text-align: left;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* futuristic grid backdrop */
+.bg-grid {
+  background-image:
+    linear-gradient(rgba(34, 211, 238, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(34, 211, 238, 0.06) 1px, transparent 1px);
+  background-size: 28px 28px;
 }
