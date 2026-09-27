@@ -1,0 +1,63 @@
+# cela2027 — Git attributes
+#
+# Goals
+#   1. One line-ending policy for every platform: LF in the repository AND in
+#      every working tree (Windows included). No CRLF drift in reviews.
+#   2. E2E fixtures are byte-exact evidence: Git must never normalise, merge,
+#      or otherwise rewrite them. Their bytes are pinned in
+#      e2e/fixtures/SHA256SUMS and verified by `node e2e/scripts/check-fixtures.mjs`.
+#   3. Real binaries are declared explicitly instead of relying on heuristics.
+#
+# Policy details: docs/E2E_FIXTURES.md
+
+# ── 1. Default: auto-detect text, always LF ───────────────────────────────
+*                     text=auto eol=lf
+
+# Explicit text types (never let a misdetection turn these into binaries)
+*.md                  text eol=lf
+*.txt                 text eol=lf
+*.json                text eol=lf
+*.ndjson              text eol=lf
+*.yml                 text eol=lf
+*.yaml                text eol=lf
+*.ts                  text eol=lf
+*.tsx                 text eol=lf
+*.js                  text eol=lf
+*.mjs                 text eol=lf
+*.cjs                 text eol=lf
+*.css                 text eol=lf
+*.py                  text eol=lf
+*.sh                  text eol=lf
+*.sql                 text eol=lf
+.gitattributes        text eol=lf
+.gitignore            text eol=lf
+.env.example          text eol=lf
+LICENSE               text eol=lf
+
+# Lockfiles: text (kept diff-able so change guards can classify them)
+package-lock.json     text eol=lf linguist-generated=true
+
+# ── 2. E2E fixtures: byte-exact, never normalised ─────────────────────────
+# -text  → no EOL conversion in either direction (working tree == blob)
+# diff   → still human-reviewable for text-like fixtures
+e2e/fixtures/**                 -text diff
+e2e/fixtures/**/*.bin           binary
+e2e/fixtures/**/*.png           binary
+e2e/fixtures/**/*.zip           binary
+# The manifest is regenerated, never hand-merged
+e2e/fixtures/SHA256SUMS         -text diff -merge
+
+# ── 3. Binary assets anywhere in the repository ───────────────────────────
+*.png                 binary
+*.jpg                 binary
+*.jpeg                binary
+*.gif                 binary
+*.webp                binary
+*.ico                 binary
+*.pdf                 binary
+*.woff                binary
+*.woff2               binary
+*.ttf                 binary
+*.wasm                binary
+*.zip                 binary
+*.gz                  binary

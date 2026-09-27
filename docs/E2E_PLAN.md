@@ -1,0 +1,74 @@
+# خطة E2E — مسار مستقل للتحقق بالمتصفح والتكامل
+
+> القاعدة نفسها التي تحكم النواة تحكم هذا المسار: **لا ادعاءات بدون أدلة.**
+> لا تُوصف مرحلة بأنها منجزة إلا إذا وُجد لها أثر قابل لإعادة التشغيل (سكربت/اختبار/سجل CI) ونتيجة مسجَّلة في `docs/E2E_BASELINE.md`.
+
+## 1. لماذا مسار مستقل؟
+
+- حتى تاريخ خط الأساس لا يوجد أي اختبار متصفح في المستودع؛ بناء Next واختبارات Route Handlers لا يثبتان رحلة المستخدم ولا Pyodide worker.
+- عمل E2E يجب ألا يعتمد على PR مفتوح ولا يعرقله. لذلك يُقطع من `origin/main` مباشرة ويُثبَّت على `E2E_BASE_SHA`، ويعيش تحت `e2e/` بحزمة وقفل تبعيات مستقلين وworkflow منفصل.
+- قواعد الاستقلال (ملزِمة لهذا الفرع):
+  - لا تعديل على كود التشغيل: `packages/*/src/**`، Route Handlers، `apps/web/lib/agent-runtime.ts`، `apps/web/app/page.tsx`.
+  - لا تعديل على الملفات التي يلمسها الـPR المفتوح (`package.json` الجذري، `vitest.config.ts`، `.github/workflows/ci.yml`، `README.md`، `docs/ARCHITECTURE.md`، `docs/ROADMAP.md`، `tsconfig.base.json`).
+  - `e2e/` ليست workspace ضمن `package.json` الجذري؛ لها `package.json` و`package-lock.json` خاصان.
+  - أي سلوك يُكتشف في الواجهة يُسجَّل كـ **characterization** (توصيف) ولا يُصلَح هنا؛ الإصلاح مكانه فرع UI-U0 (انظر §4).
+
+## 2. المراحل
+
+| # | المرحلة | المخرجات | معيار الإنجاز (الدليل) |
+|---|---|---|---|
+| 0 | Bootstrap | `.gitattributes` + هذه الوثيقة + `E2E_FIXTURES.md` + `E2E_BASELINE.md` | commit واحد؛ `git status` نظيف؛ `git add --renormalize .` لا يغيّر شيئًا |
+| 1 | تثبيت الحاوية | `e2e/baseline.json` يحمل tag + digest لصورة Playwright؛ `check-container.mjs` | نسخة `@playwright/test` == نسخة tag الحاوية؛ الـworkflow يستخدم `image@sha256:` المطابق؛ سحب الصورة في CI ينجح بالـdigest |
+| 2 | أول fixture | `e2e/fixtures/events/offline-task.ndjson` مسجَّل من التطبيق الحقيقي + `SHA256SUMS` + `check-fixtures.mjs` | `git check-attr` يعيد `text: unset`؛ blob في الفهرس == بايتات الشجرة == SHA256SUMS؛ كل سطر JSON صالح وينتهي بـLF |
+| 3 | Proxy مُدار بالأوامر | `e2e/proxy/fault-proxy.mjs` + اختبارات `node:test` | تمرير JSON وSSE دون تخزين مؤقت؛ `fail-next`/`delay`/`drop`/`route`/`reset` تعمل كما هو موثق؛ سجل الطلبات يثبت أن العطل حدث فعلًا |
+| 4 | معايرة retry | `e2e/scripts/calibrate-retry.mjs` → `e2e/retry-calibration.json` | أرقام مقاسة (عينات + p50/p95/max) هي مصدر مهل Playwright وعتبات التأخير؛ لا أرقام مخمَّنة |
+| 5 | browser-e2e-mocked-app-api | `e2e/mock-api/server.mjs` + `e2e/tests/mocked-app-api/*.spec.ts` | المتصفح الحقيقي + صفحة Next الحقيقية + API محاكى من الـfixture عبر الـproxy؛ يمر في حاوية CI المثبتة |
+| 6 | application integration | `e2e/tests/integration/*.spec.ts` + job مستقل في CI | API الحقيقي بلا محاكاة؛ رحلة كاملة حتى `VERIFIED`؛ نتيجة الـjob مستقلة عن job المحاكاة |
+
+ترتيب التنفيذ إلزامي: كل مرحلة تبني على أدوات المرحلة السابقة (الـfixture يغذي المحاكاة، والـproxy يغذي المعايرة والتكامل).
+
+## 3. الهندسة
+
+```text
+Playwright (chromium)  ──►  fault-proxy :3100  ──►  Next app (next start) :3000
+                                │                      ├─ /            الصفحة الحقيقية
+                                │                      ├─ /_next/*     الأصول الحقيقية
+                                │                      └─ /api/*       API الحقيقي   ← integration
+                                └── قاعدة route (بأمر) ──►  mock-api :3200
+                                                           ├─ /api/*            من الـfixture ← mocked-app-api
+                                                           └─ /pyodide-worker.js  worker حتمي (المحاكاة فقط)
+```
+
+- **نقطة تركيب واحدة:** المتصفح يخاطب الـproxy فقط. تغيير المرحلة = أمر توجيه للـproxy، لا تغيير في التطبيق ولا في الاختبار.
+- **الأوامر** تُرسل عبر `POST /__proxy/commands` و`POST /__mock/commands`، وتُقرأ الحالة والسجل عبر `GET /__proxy/state` و`GET /__mock/state`. الاختبار يثبت أن العطل/التوجيه حدث بالرجوع إلى السجل، لا بالافتراض.
+- **تنفيذ متسلسل** (`workers: 1`): الـproxy والـmock حالة مشتركة واحدة؛ الحتمية أهم من السرعة في هذه المرحلة.
+- **الصندوق:** الخادم لا ينفّذ كود المستخدم أبدًا. في المحاكاة يُقدَّم worker حتمي يعيد الناتج المسجَّل في الـfixture. في التكامل يعمل Pyodide الحقيقي من CDN؛ إذا كان CDN غير متاح يُعلَن ذلك صراحة بـ`test.skip` بسبب موثق بدل فشل غامض أو نجاح زائف.
+
+## 4. علاقة المسار بفرع UI-U0
+
+- هذا الفرع **يوصّف** سلوك الواجهة الحالي (مثل: فشل `POST /api/task` مرة واحدة ⇒ الواجهة تعرض `FAILED` بلا إعادة محاولة؛ انقطاع SSE ⇒ التوقف بلا polling fallback). هذه الاختبارات هي خط الأساس الذي سيقيس تغييرات الواجهة لاحقًا.
+- فرع `UI-U0` يُنشأ لاحقًا من `origin/main` وقتها، ويُثبَّت له `UI_U0_BASE_SHA` **عند إنشائه فقط** (لا يُخمَّن الآن). حقل `UI_U0_BASE_SHA` في `e2e/baseline.json` يبقى `null` حتى ذلك الحين، و`check-baseline.mjs` يرفض أي قيمة ليست `null` أو SHA سلفًا لـHEAD.
+
+## 5. أوامر التشغيل
+
+```bash
+# تثبيت (مستقل عن الجذر)
+npm ci --prefix e2e
+
+# حراس E2E (بدون متصفح)
+npm run check --prefix e2e          # baseline + fixtures + container
+npm run test:proxy --prefix e2e     # اختبارات الـproxy بـ node:test
+
+# بناء التطبيق ثم E2E (يشغّل next start + proxy + mock تلقائيًا)
+npm install && (cd apps/web && npx next build)
+npm run test:mocked --prefix e2e
+npm run test:integration --prefix e2e
+```
+
+في CI تعمل المرحلتان 5 و6 كـjobين مستقلين داخل حاوية Playwright المثبتة بالـdigest (`.github/workflows/e2e.yml`).
+
+## 6. ما لا تعنيه هذه الخطة
+
+- لا تعني تفعيل أي مزود نماذج أو خدمة خارجية؛ كل شيء يعمل بوضع المحاكاة المحلية (`OfflinePlanner`).
+- لا تعني تغيير عقد API أو شكل الأحداث؛ الـmock يطبّق العقد الحالي حرفيًا، وأي انحراف يُكتشف في مرحلة التكامل.
+- لا تعني أن `E2E ✅` تُضاف إلى تعريف الإنجاز قبل أن يمر job المتصفح فعليًا في CI ويُسجَّل رابطه في `docs/E2E_BASELINE.md`.
