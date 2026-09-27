@@ -21,3 +21,10 @@ Thumbs.db
 # build artifacts of tests
 .vitest-cache/
 coverage/
+
+# e2e harness artifacts (e2e/ has its own node_modules, covered above)
+e2e/test-results/
+e2e/playwright-report/
+e2e/blob-report/
+e2e/reports/
+e2e/.tmp/
