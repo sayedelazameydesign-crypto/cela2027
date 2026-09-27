@@ -149,7 +149,7 @@ export class Runtime {
     const record = this.store ? await this.store.getTask(taskId) : undefined;
     const done = (t?.buffer.some((x) => x.e.type === "task_finished") ?? false) ||
       events.some((x) => x.e.type === "task_finished") ||
-      (record ? ["VERIFIED", "FAILED", "DENIED"].includes(record.status) : !t && events.length === 0);
+      (record ? ["VERIFIED", "FAILED", "DENIED"].includes(record.status) : !t && !this.journal && events.length === 0);
     return { events, done };
   }
 

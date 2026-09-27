@@ -1,6 +1,6 @@
 {
   "classification": "B",
-  "reason": "Add bounded inspection-only task checkpoints with verified ledger rehydration, binary workspace restoration, and opt-in Supabase snapshot adapter without a reverse Core-to-Store dependency.",
+  "reason": "Add resumable SSE with monotonic task-event cursors and cross-instance journal replay, while keeping hash-ledger verification and checkpoint schemas separate.",
   "protectedChanges": [
     "apps/web/app/api/task/[id]/events/route.ts",
     "apps/web/app/api/task/[id]/files/route.ts",

@@ -42,7 +42,7 @@ Architecture dependency + alias boundaries
   → production build
 ```
 
-الحالة الحالية بعد Tracks 1+2+4 وإضافة Journal لمسار 3: **77/77 اختبارًا محليًا** ناجحًا. اختبارات Gemini تستخدم HTTP mock ولا يوجد اختبار مزود حي في هذه المرحلة؛ حارس lockfile يستخدم `npm ci --dry-run`، بينما CI ينفذ `npm ci` فعليًا قبل البوابة.
+الحالة الحالية بعد Tracks 1+2+4 وSub-Tracks 3.1–3.3: **85/85 اختبارًا محليًا** ناجحًا. اختبارات Gemini تستخدم HTTP mock ولا يوجد اختبار مزود حي في هذه المرحلة؛ حارس lockfile يستخدم `npm ci --dry-run`، بينما CI ينفذ `npm ci` فعليًا قبل البوابة.
 
 لا تعني هذه البوابة وجود Browser E2E أو اتصال حي بالخدمات الخارجية. لا يجوز وصف هاتين البوابتين بالنجاح قبل إضافتهما فعليًا.
 
@@ -275,6 +275,12 @@ Default عند غياب الإعداد الجديد:
 - `packages/store/src/types.ts` يعرّف `SnapshotStore` مستقلًا عن Core، و`persistent_store.ts` يقدّم Memory/Supabase REST adapters؛ لا تعتمد الحزمة Store على Core أو SDK جديد. SQL الإضافي في `packages/store/src/schema.sql` يضيف `task_snapshots` **بعد** جدول `tasks` الموجود، ولا يعيد تسمية الجداول الحالية.
 - الخادم يحفظ لقطة المهمة **بعد انتهاء التشغيل**، ويمكن لمثيل آخر تحميلها للفحص فقط (`loadCheckpoint`). لا تُحفَظ لقطة لكل خطوة، ولا تستعاد listeners أو sandbox resolvers أو الاستمرار التلقائي لـ Orchestrator. فشل حفظ اللقطة بعد إصدار الحالة النهائية لا يزوّر حالة المهمة؛ يسجَّل الخطأ على الخادم.
 - لتفادي إغراق `jsonb`، يرفض محوّل Supabase JSON أكبر من 512 KB صراحةً. ملفات Binary الأكبر تحتاج adapter تخزين كائنات خارجية مع checksum وmanifest وchunking؛ لا يوجد Redis adapter أو `cela_blobs` مُفعّل، ولا يُدَّعى خلاف ذلك. اختبارات `checkpoint.test.ts` و`snapshot-contract.test.ts` و`checkpoint-runtime.test.ts` تتحقق من البايتات، وسلامة التجزئة، والتحويل بين مثيلين، وإخفاق المحول.
+
+### Sub-Track 3.3 — استعادة بث SSE دون استئناف التنفيذ
+
+- المسار الموجود `GET /api/task/:id/stream` يصدر الآن `id: <seq>` قبل `data:` لكل حدث، ويقرأ `Last-Event-ID` عند إعادة الاتصال؛ يمكن أيضًا تمرير `?after=<seq>` عند إنشاء اتصال جديد. ترويسة إعادة الاتصال لها الأولوية، وتُرفض القيم السالبة أو غير الصحيحة بـ400. الاتصال الأول دون cursor يبدأ من أول حدث (`seq=0`).
+- `seq` مأخوذ من Journal أحداث المهمة `task_events`، **وليس** من `LedgerEntry.seq` أو معرف SQL عالمي. يُعرض فقط ما يأتي بعد cursor دون إعادة إرسال الحدث السابق. تختبر `stream-resume.test.ts` الاتصال الأول، والأولوية، وإعادة الاتصال من مثيل مختلف، وإغلاق المهمة، وتعذّر قراءة المخزن.
+- `EventSource` في الواجهة يترك المتصفح يعيد الاتصال تلقائيًا بدل إغلاق المهمة عند خطأ SSE، ويمنع تشغيل `sandbox_request` ذي `runId` نفسه مرتين داخل الجلسة. ما زالت حالة `pendingSandbox` حصرية لمثيل التنفيذ الأصلي؛ استئناف عرض البث لا يستأنف Orchestrator بعد موته.
 
 ## 9. سجل المخاطر الحالي
 

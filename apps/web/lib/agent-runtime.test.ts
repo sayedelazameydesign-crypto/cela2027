@@ -27,6 +27,13 @@ describe("Runtime durable replay", () => {
     expect((await reader.eventsAfter("t1", 3)).done).toBe(true);
   });
 
+  it("does not mistake a journal-only task at the end of its cursor for a completed task", async () => {
+    const journal = new MemoryEventJournal<AgentEvent>();
+    await journal.append("t1", { seq: 0, e: started });
+    const reader = new Runtime({ journal });
+    expect(await reader.eventsAfter("t1", 0)).toEqual({ events: [], done: false });
+  });
+
   it("serializes async journal writes and propagates persistence failures to readers", async () => {
     const journal = new MemoryEventJournal<AgentEvent>();
     let release!: () => void;

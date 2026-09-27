@@ -59,6 +59,8 @@ export default function Home() {
   const [activeNode, setActiveNode] = useState<PipelineId | null>(null);
   const [failed, setFailed] = useState(false);
   const workerRef = useRef<Worker | null>(null);
+  const streamRef = useRef<EventSource | null>(null);
+  const handledRunsRef = useRef<Set<string>>(new Set());
   const stepsEndRef = useRef<HTMLDivElement | null>(null);
 
   const ensureWorker = useCallback(() => {
@@ -69,7 +71,10 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    return () => workerRef.current?.terminate();
+    return () => {
+      streamRef.current?.close();
+      workerRef.current?.terminate();
+    };
   }, []);
 
   useEffect(() => {
@@ -78,6 +83,9 @@ export default function Home() {
 
   const handleSandboxRequest = useCallback(
     (ev: SandboxRequestEvent, tid: string) => {
+      // A replayed SSE event must never execute the same sandbox run twice.
+      if (handledRunsRef.current.has(ev.runId)) return;
+      handledRunsRef.current.add(ev.runId);
       const worker = ensureWorker();
       const onMessage = (msg: MessageEvent) => {
         const d = msg.data || {};
@@ -102,6 +110,8 @@ export default function Home() {
     const g = goal.trim();
     if (!g || running) return;
     setRunning(true);
+    streamRef.current?.close();
+    handledRunsRef.current.clear();
     setPlan(null);
     setSteps({});
     setFiles({});
@@ -123,6 +133,7 @@ export default function Home() {
       setTaskId(tid);
 
       const es = new EventSource(`/api/task/${tid}/stream`);
+      streamRef.current = es;
       es.onmessage = (m) => {
         let e: AgentEvent;
         try {
@@ -187,8 +198,9 @@ export default function Home() {
         }
       };
       es.onerror = () => {
-        es.close();
-        setRunning(false);
+        // EventSource reconnects with Last-Event-ID; keep the task running.
+        // A terminal task_finished event closes the stream in onmessage.
+        setSummary((current) => current || "انقطع البث مؤقتاً؛ جارٍ إعادة الاتصال...");
       };
     } catch (err: any) {
       setSummary(String(err?.message ?? err));
