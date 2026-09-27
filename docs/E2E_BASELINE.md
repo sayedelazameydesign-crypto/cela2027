@@ -119,9 +119,11 @@ node e2e/scripts/check-baseline.mjs
 
 ## 7. سجل تشغيل CI
 
-| التاريخ | Job | النتيجة | الرابط |
-|---|---|---|---|
-| — | — | لا تشغيل بعد | — |
+| التاريخ | Run | Job | النتيجة | ملاحظات |
+|---|---|---|---|---|
+| 2026-09-27 | [#36329938728](https://github.com/sayedelazameydesign-crypto/cela2027/actions/runs/36329938728) (PR #2، `678bcc5`) | guards | ✓ 8s | baseline · fixtures · container digest مؤكَّد من السجل · typecheck · 17 node:test |
+| 2026-09-27 | نفسه | mocked-app-api | ✓ 1m35s | الصورة سُحبت بالـdigest `eff16c30…` (Digest في سجل docker pull)؛ 10/10 داخل الحاوية |
+| 2026-09-27 | نفسه | integration | ✗ 3m47s | 4/5 نجحت (عقد API). فشل رحلة المتصفح مرتين (retry CI = 1): لوحة الصندوق لم تعرض `ALL TESTS PASSED` خلال 75000ms. السبب الجذري: مساحة العمل لا تصل إلى عامل Pyodide ⇒ `ModuleNotFoundError` (أُعيد إنتاجه محليًا بعامل بديل يعيد نفس الخطأ ضد التطبيق الحقيقي؛ وثّق في `E2E_PLAN.md` §4) |
 
 ## 8. البيئة التي أُنشئ فيها الفرع
 

@@ -187,6 +187,9 @@ export const ui = {
   filesHeading: (page: Page) => page.getByRole("heading", { level: 2, name: /ملفات مساحة العمل/ }),
   fileButton: (page: Page, filePath: string) => page.getByRole("button", { name: filePath, exact: true }),
   sandboxOutput: (page: Page) => page.locator("pre", { hasText: "ALL TESTS PASSED" }),
+  /** The <pre> inside the «مخرجات صندوق Python» panel, whatever it contains. */
+  sandboxPanel: (page: Page) => page.locator("div:has(> p:text-is('مخرجات صندوق Python')) > pre"),
+  failedBanner: (page: Page) => page.getByText("انتهت المهمة بحالة: فشل", { exact: true }),
   finalBanner: (page: Page) => page.getByText("اكتملت المهمة — مُوثَّقة بالأدلة ✓", { exact: true }),
   footerIdle: (page: Page) => page.getByText("اكتملت المهمة — ابدأ هدفاً جديداً", { exact: true }),
   footerRunning: (page: Page) => page.getByText("الوكيل يعمل الآن…", { exact: true }),
