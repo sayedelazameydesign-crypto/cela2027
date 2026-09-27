@@ -1,0 +1,12 @@
+{
+  "classification": "C",
+  "reason": "Add provider-neutral contracts, preserve OpenRouter compatibility, and introduce an isolated Gemini adapter without changing Core, Planner, or runtime routing.",
+  "protectedChanges": [
+    "packages/llm/src/fabric.ts",
+    "packages/llm/src/index.ts",
+    "packages/llm/src/providers/gemini.ts",
+    "packages/llm/src/providers/openrouter.ts",
+    "packages/llm/src/types.ts"
+  ],
+  "allowedBinaryChanges": []
+}

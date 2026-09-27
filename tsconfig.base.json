@@ -13,6 +13,7 @@
     "noEmit": true,
     "jsx": "preserve",
     "paths": {
+      "@/*": ["./apps/web/*"],
       "@cela/core": ["./packages/core/src/index.ts"],
       "@cela/llm": ["./packages/llm/src/index.ts"],
       "@cela/tools": ["./packages/tools/src/index.ts"],
