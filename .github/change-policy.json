@@ -1,6 +1,11 @@
 {
-  "classification": "E",
-  "reason": "Establish compatibility, architecture, lockfile, and changed-file gates without modifying protected runtime behavior.",
-  "protectedChanges": [],
+  "classification": "C",
+  "reason": "Introduce provider-neutral contracts and move the existing OpenRouter implementation behind them without changing Planner or runtime routing behavior.",
+  "protectedChanges": [
+    "packages/llm/src/fabric.ts",
+    "packages/llm/src/index.ts",
+    "packages/llm/src/providers/openrouter.ts",
+    "packages/llm/src/types.ts"
+  ],
   "allowedBinaryChanges": []
 }

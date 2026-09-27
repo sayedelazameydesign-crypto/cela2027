@@ -24,10 +24,12 @@ cela2027/
 │   ├── components/NetworkGraph.tsx   شبكة خط الأنابيب 3D
 │   └── public/pyodide-worker.js   صندوق Python في المتصفح
 ├── packages/core/       النواة: orchestrator, policy, ledger, planner, verifier, workspace
-├── packages/llm/        عميل OpenRouter (توجيه موديلات + fallback)
+├── packages/llm/        ModelProvider + ProviderFabric foundation + OpenRouter
 ├── packages/sandbox/    واجهة Sandbox الموحدة (Pyodide الآن / Docker لاحقاً)
 ├── packages/store/      طبقة التخزين (ذاكرة الآن / Supabase لاحقاً)
-└── docs/ARCHITECTURE.md وثائق البنية
+├── docs/ARCHITECTURE.md وثائق البنية
+├── docs/PROVIDERS.md    دليل عقد المزودين وحدود مرحلة P1
+└── docs/SAFE_EVOLUTION.md سياسة التوسعة الآمنة وبوابة التوافق
 ```
 
 ## التشغيل السريع
@@ -36,10 +38,15 @@ cela2027/
 # 1) التثبيت
 npm install
 
-# 2) (اختياري) مفتاح OpenRouter للمخطِّط الذكي — بدونه يعمل وضع المحاكاة
-cp .env.example .env.local   # ثم ضع OPENROUTER_API_KEY من https://openrouter.ai/keys
+# 2) (اختياري) إعداد أسرار السيرفر محليًا — بدونه يعمل وضع المحاكاة
+# Next.js يعمل من apps/web، لذلك ملف البيئة المحلي يوضع هناك.
+cp .env.example apps/web/.env.local
+# OPENROUTER_API_KEY للمخطط الحالي؛ مفاتيح المزودين الآخرين غير مستهلكة في P1.
 
-# 3) الاختبارات (21 اختباراً للنواة) — على Windows استخدم --no-cache إذا تعطل الكاش
+# 3) بوابة التوافق الكاملة: architecture/change policy + lockfile + types + tests + build
+npm run verify
+
+# أو الاختبارات فقط — على Windows استخدم --no-cache إذا تعطل الكاش
 npm test -- --no-cache
 
 # 4) التشغيل
@@ -66,6 +73,7 @@ npm run dev    # ثم افتح http://localhost:3000
 | صندوق Pyodide بالمتصفح | ✓ يعمل |
 | سجل مُهاش + تحقق بالأدلة | ✓ يعمل |
 | مخطِّط OpenRouter | ✓ (يعمل بوضع المحاكاة بدون مفتاح) |
+| ModelProvider + ProviderFabric | ✓ أساس تعاقدي؛ OpenRouter فقط، وغير مفعّل في Planner عبر Fabric بعد |
 | تصفح الإنترنت | مؤجل للمرحلة 2 |
 | الوكلاء المتعددون / التحسين الذاتي (SICA) | مؤجل |
 
