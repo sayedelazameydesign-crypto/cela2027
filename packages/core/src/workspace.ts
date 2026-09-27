@@ -28,6 +28,7 @@ function normalize(p: string): string[] {
 
 export class Workspace {
   private files = new Map<string, string>();
+  private binary = new Map<string, Uint8Array>();
 
   /** normalized relative path or throw */
   resolve(path: string): string {
@@ -45,7 +46,22 @@ export class Workspace {
 
   write(path: string, content: string): void {
     const p = this.resolve(path);
+    this.binary.delete(p);
     this.files.set(p, String(content));
+  }
+
+  /** Store opaque bytes without converting through UTF-8. */
+  writeBinary(path: string, content: Uint8Array): void {
+    const p = this.resolve(path);
+    this.files.delete(p);
+    this.binary.set(p, new Uint8Array(content));
+  }
+
+  readBinary(path: string): Uint8Array {
+    const p = this.resolve(path);
+    const bytes = this.binary.get(p);
+    if (!bytes) throw new Error(`File not found: ${p}`);
+    return new Uint8Array(bytes);
   }
 
   read(path: string): string {
@@ -57,7 +73,8 @@ export class Workspace {
 
   exists(path: string): boolean {
     try {
-      return this.files.has(this.resolve(path));
+      const p = this.resolve(path);
+      return this.files.has(p) || this.binary.has(p);
     } catch {
       return false;
     }
@@ -65,13 +82,15 @@ export class Workspace {
 
   delete(path: string): boolean {
     const p = this.resolve(path);
-    return this.files.delete(p);
+    const textDeleted = this.files.delete(p);
+    const binaryDeleted = this.binary.delete(p);
+    return textDeleted || binaryDeleted;
   }
 
   /** list files, optionally filtered by directory prefix */
   list(dir = ""): string[] {
     const prefix = dir ? this.resolve(dir) + "/" : "";
-    return [...this.files.keys()]
+    return [...this.files.keys(), ...this.binary.keys()]
       .filter((k) => k.startsWith(prefix))
       .sort();
   }
@@ -84,9 +103,19 @@ export class Workspace {
     return Object.fromEntries(this.files);
   }
 
+  /** JSON-safe representation for the browser worker; snapshot() remains text-only. */
+  sandboxSnapshot(): Record<string, string | { base64: string }> {
+    const result: Record<string, string | { base64: string }> = Object.fromEntries(this.files);
+    for (const [path, bytes] of this.binary) {
+      result[path] = { base64: Buffer.from(bytes).toString("base64") };
+    }
+    return result;
+  }
+
   totalBytes(): number {
     let n = 0;
-    for (const c of this.files.values()) n += c.length;
+    for (const c of this.files.values()) n += new TextEncoder().encode(c).length;
+    for (const c of this.binary.values()) n += c.length;
     return n;
   }
 }

@@ -76,7 +76,7 @@ export type AgentEvent =
   | { type: "plan_created"; taskId: string; plan: Plan }
   | { type: "step_started"; taskId: string; stepId: string; title: string; tool: string }
   | { type: "step_finished"; taskId: string; stepId: string; status: StepStatus; evidence?: Evidence[]; error?: string }
-  | { type: "sandbox_request"; taskId: string; runId: string; code: string }
+  | { type: "sandbox_request"; taskId: string; runId: string; code: string; files?: Record<string, string | { base64: string }> }
   | { type: "artifact"; taskId: string; path: string; content: string; size: number }
   | { type: "agent_message"; taskId: string; content: string }
   | { type: "task_finished"; taskId: string; status: TaskStatus; summary: string };

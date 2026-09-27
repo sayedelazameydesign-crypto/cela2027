@@ -18,8 +18,14 @@ import {
   type SandboxRunResult,
   type Workspace,
   type Ledger,
+  captureCheckpoint,
+  restoreCheckpoint,
+  type TaskCheckpoint,
 } from "@cela/core";
-import { SupabaseStore, type Store } from "@cela/store";
+import {
+  SupabaseStore, SupabaseEventJournal, SupabaseSnapshotStore,
+  type EventJournal, type Store, type SnapshotStore,
+} from "@cela/store";
 
 export interface BufferedEvent {
   seq: number;
@@ -38,7 +44,7 @@ interface TaskRuntime {
   summary?: string;
 }
 
-const g = globalThis as unknown as { __celaRuntime?: Runtime; __celaStore?: Store };
+const g = globalThis as unknown as { __celaRuntime?: Runtime; __celaStore?: Store; __celaJournal?: EventJournal<AgentEvent>; __celaSnapshots?: SnapshotStore };
 
 function getStore(): Store | undefined {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -48,27 +54,61 @@ function getStore(): Store | undefined {
   return g.__celaStore;
 }
 
-class Runtime {
+function getJournal(): EventJournal<AgentEvent> | undefined {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return undefined;
+  if (!g.__celaJournal) g.__celaJournal = new SupabaseEventJournal<AgentEvent>(url, key);
+  return g.__celaJournal;
+}
+
+function getSnapshots(): SnapshotStore | undefined {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return undefined;
+  if (!g.__celaSnapshots) g.__celaSnapshots = new SupabaseSnapshotStore(url, key);
+  return g.__celaSnapshots;
+}
+
+export class Runtime {
   tasks = new Map<string, TaskRuntime>();
   /** runId → resolver */
   pendingSandbox = new Map<string, (r: SandboxRunResult) => void>();
   store?: Store;
+  journal?: EventJournal<AgentEvent>;
+  snapshots?: SnapshotStore;
+  private writes = new Map<string, Promise<void>>();
 
-  constructor() {
-    this.store = getStore();
+  constructor(options: { store?: Store; journal?: EventJournal<AgentEvent>; snapshots?: SnapshotStore } = {}) {
+    this.store = options.store ?? getStore();
+    this.journal = options.journal ?? getJournal();
+    this.snapshots = options.snapshots ?? getSnapshots();
+  }
+
+  /** Inspection-only restoration: does not resume execution or sandbox resolvers. */
+  async loadCheckpoint(taskId: string): Promise<Awaited<ReturnType<typeof restoreCheckpoint>> | undefined> {
+    const snapshot = await this.snapshots?.loadSnapshot(taskId);
+    return snapshot ? restoreCheckpoint(snapshot as TaskCheckpoint) : undefined;
+  }
+
+  /** Wait until the local event queue has flushed (also used by polling/SSE replay). */
+  async flush(taskId: string): Promise<void> {
+    await this.writes.get(taskId);
   }
 
   emit(taskId: string, e: AgentEvent) {
     const t = this.tasks.get(taskId);
     if (!t) return;
-    if (e.type === "artifact") {
-      // keep only the latest version of each file in the replay buffer
-      const idx = t.buffer.findIndex(
-        (x) => x.e.type === "artifact" && x.e.path === e.path
-      );
-      if (idx >= 0) t.buffer.splice(idx, 1);
+    const entry = { seq: t.nextSeq++, e };
+    t.buffer.push(entry);
+    if (this.journal) {
+      // Serialize writes per task; a slow network must not reorder the monotonic cursor.
+      const previous = this.writes.get(taskId) ?? Promise.resolve();
+      const next = previous.then(() => this.journal!.append(taskId, entry));
+      this.writes.set(taskId, next);
+      // Prevent unhandled rejections; flush() still observes and propagates the failure.
+      void next.catch(() => {});
     }
-    t.buffer.push({ seq: t.nextSeq++, e });
     if (e.type === "task_status") t.status = e.status;
     if (e.type === "task_finished") t.summary = e.summary;
     for (const l of t.listeners) {
@@ -78,23 +118,11 @@ class Runtime {
         /* listener died; ignore */
       }
     }
-    // durable write-through (free-tier Supabase when configured)
-    if (this.store) {
-      try {
-        if (e.type === "task_started") {
-          void this.store.createTask({
-            id: taskId,
-            goal: t.goal,
-            status: t.status,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          });
-        } else if (e.type === "task_finished") {
-          void this.store.updateTask(taskId, { status: e.status, summary: e.summary });
-        }
-      } catch {
-        /* persistence is best-effort */
-      }
+    if (this.store && e.type === "task_finished") {
+      const previous = this.writes.get(taskId) ?? Promise.resolve();
+      const next = previous.then(() => this.store!.updateTask(taskId, { status: e.status, summary: e.summary }));
+      this.writes.set(taskId, next);
+      void next.catch(() => {});
     }
   }
 
@@ -105,25 +133,35 @@ class Runtime {
     return () => t.listeners.delete(fn);
   }
 
-  replay(taskId: string): AgentEvent[] {
-    return (this.tasks.get(taskId)?.buffer ?? []).map((x) => x.e);
+  async replay(taskId: string): Promise<AgentEvent[]> {
+    const { events } = await this.eventsAfter(taskId, -1);
+    return events.map((x) => x.e);
   }
 
   /** polling resume endpoint data: events after `after`, plus done flag */
-  eventsAfter(taskId: string, after: number): { events: BufferedEvent[]; done: boolean } {
+  async eventsAfter(taskId: string, after: number): Promise<{ events: BufferedEvent[]; done: boolean }> {
     const t = this.tasks.get(taskId);
-    if (!t) return { events: [], done: true };
-    const events = t.buffer.filter((x) => x.seq > after);
-    const done = t.buffer.some((x) => x.e.type === "task_finished");
+    if (t) await this.flush(taskId);
+    const events = this.journal
+      ? await this.journal.after(taskId, after) as BufferedEvent[]
+      : (t?.buffer ?? []).filter((x) => x.seq > after);
+    // A different instance can observe completion through durable task status.
+    const record = this.store ? await this.store.getTask(taskId) : undefined;
+    const done = (t?.buffer.some((x) => x.e.type === "task_finished") ?? false) ||
+      events.some((x) => x.e.type === "task_finished") ||
+      (record ? ["VERIFIED", "FAILED", "DENIED"].includes(record.status) : !t && !this.journal && events.length === 0);
     return { events, done };
   }
 
-  workspaceFiles(taskId: string): Record<string, string> {
-    return this.tasks.get(taskId)?.workspace?.snapshot() ?? {};
+  async workspaceFiles(taskId: string): Promise<Record<string, string>> {
+    const t = this.tasks.get(taskId);
+    if (t) await this.flush(taskId);
+    if (this.journal) return this.journal.files(taskId);
+    return t?.workspace?.snapshot() ?? {};
   }
 
   /** create a task and run the orchestrator in the background */
-  startTask(goal: string): string {
+  async startTask(goal: string): Promise<string> {
     const id = randomUUID().slice(0, 8);
     const t: TaskRuntime = {
       id,
@@ -133,12 +171,18 @@ class Runtime {
       nextSeq: 0,
       listeners: new Set(),
     };
+    // Write the task record before returning the id or launching background execution.
+    // Fail closed if durable storage is configured but unavailable.
+    if (this.store) {
+      const now = new Date().toISOString();
+      await this.store.createTask({ id, goal, status: "PLANNING", createdAt: now, updatedAt: now });
+    }
     this.tasks.set(id, t);
 
     const bridge = {
-      requestRun: async (taskId: string, code: string): Promise<SandboxRunResult> => {
+      requestRun: async (taskId: string, code: string, files?: Record<string, string | { base64: string }>): Promise<SandboxRunResult> => {
         const runId = `${taskId}:${randomUUID().slice(0, 6)}`;
-        this.emit(taskId, { type: "sandbox_request", taskId, runId, code });
+        this.emit(taskId, { type: "sandbox_request", taskId, runId, code, files });
         return new Promise<SandboxRunResult>((resolve) => {
           // store resolver under composite runId emitted above
           this.pendingSandbox.set(runId, resolve);
@@ -159,13 +203,33 @@ class Runtime {
     };
 
     const orch = new Orchestrator({ bridge });
-    void orch
-      .runTask(id, goal, (e) => this.emit(id, e))
-      .then((res) => {
+    void orch.runTask(id, goal, (e) => this.emit(id, e))
+      .then(async (res) => {
+        await this.flush(id);
         const t2 = this.tasks.get(id);
         if (t2) {
           t2.workspace = res.workspace;
           t2.ledger = res.ledger;
+        }
+        if (this.snapshots) {
+          try {
+            const completedSteps = res.ledger.export().filter((entry) => entry.type === "step_finished").length;
+            const snapshot = await captureCheckpoint(id, goal, res.status, completedSteps, res.workspace, res.ledger);
+            await this.snapshots.saveSnapshot(snapshot);
+          } catch (error) {
+            // The task has already emitted a terminal event. Do not rewrite its verified
+            // status on snapshot failure; callers loading the snapshot will see the error.
+            console.error("Failed to persist task checkpoint", id, error);
+          }
+        }
+      }).catch(async (error: unknown) => {
+        const t2 = this.tasks.get(id);
+        if (t2) {
+          t2.status = "FAILED";
+          t2.summary = `تعذر تنفيذ المهمة: ${String(error)}`;
+        }
+        if (this.store) {
+          await this.store.updateTask(id, { status: "FAILED", summary: t2?.summary }).catch(() => {});
         }
       });
     return id;

@@ -1,5 +1,6 @@
 export * from "./events";
 export * from "./workspace";
+export * from "./checkpoint";
 export * from "./ledger";
 export * from "./policy";
 export * from "./planner";

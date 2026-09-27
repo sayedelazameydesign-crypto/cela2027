@@ -42,7 +42,7 @@ Architecture dependency + alias boundaries
   → production build
 ```
 
-الحالة الحالية بعد تعميق الحراس ومرحلتي P1/P2: **53/53 اختبارًا محليًا** ناجحًا. اختبارات Gemini تستخدم HTTP mock ولا يوجد اختبار مزود حي في هذه المرحلة؛ حارس lockfile يستخدم `npm ci --dry-run`، بينما CI ينفذ `npm ci` فعليًا قبل البوابة.
+الحالة الحالية بعد Tracks 1+2+4 وSub-Tracks 3.1–3.3: **85/85 اختبارًا محليًا** ناجحًا. اختبارات Gemini تستخدم HTTP mock ولا يوجد اختبار مزود حي في هذه المرحلة؛ حارس lockfile يستخدم `npm ci --dry-run`، بينما CI ينفذ `npm ci` فعليًا قبل البوابة.
 
 لا تعني هذه البوابة وجود Browser E2E أو اتصال حي بالخدمات الخارجية. لا يجوز وصف هاتين البوابتين بالنجاح قبل إضافتهما فعليًا.
 
@@ -55,7 +55,7 @@ apps/web
   └─ @cela/sandbox    التحقق من طلبات الصندوق
 
 @cela/core
-  ├─ @cela/llm        Adapter OpenRouter المستخدم من Planner
+  ├─ @cela/llm        Adapter المزودات (ProviderFabric: OpenRouter → Gemini) المستخدم من Planner
   └─ @cela/tools      سجل عقود الأدوات
 
 leaf packages (لا تعتمد على Core أو Web)
@@ -131,8 +131,8 @@ leaf packages (لا تعتمد على Core أو Web)
 
 | الجزء | القرار الافتراضي | طريقة التوسعة الآمنة |
 |---|---|---|
-| `core/orchestrator` | **Freeze** | خيارات اختيارية أو Interfaces محقونة؛ لا شروط خاصة بالمزود |
-| `core/planner` | **Extend** | Planner جديد يطبّق `Planner` أو Adapter مزود جديد |
+| `core/orchestrator` | **Freeze + Extend** | خيارات اختيارية (`maxRetriesPerStep`) أو Interfaces محقونة؛ لا شروط خاصة بالمزود |
+| `core/planner` | **Extend** | Planner جديد يطبّق `Planner` أو Adapter مزود جديد؛ `replanStep` اختياري |
 | `core/policy` | **Freeze + Extend** | قواعد إضافية محافظة مع اختبارات allow/deny |
 | `core/tools-impl` | **Extend** | Tool contract + Policy + implementation + verifier معًا |
 | `core/verifier` | **Freeze** | Verifier جديد أو check إضافي؛ لا تخفيف الأدلة القائمة |
@@ -230,18 +230,70 @@ Default عند غياب الإعداد الجديد:
 
 أي تغيير عقد يحدّث نسخة الحزمة المالكة، واختبارات العقد، وتبعيات المستهلكين والـlockfile في التغيير نفسه. استخدام `"*"` الحالي لا يُعد بديلًا عن versioning عند بدء نشر الحزم خارج الـmonorepo.
 
-## 7. سجل المخاطر الحالي
+## 7. حلقة ReAct وتكامل المزودات (Tracks 1+2)
+
+أضيفت القدرة عبر خيارات اختيارية وواجهات محقونة، من دون كسر أي عقد سابق:
+
+### Core — `Planner.replanStep?(failedStep, error, context?)`
+
+- **اختياري بالكامل:** أي `Planner` قديم (بما فيه `OfflinePlanner`) يستمر في العمل. غياب `replanStep` يعني صفر استدراك، وهو السلوك الافتراضي.
+- **`OrchestratorOptions.maxRetriesPerStep`** قيمته الافتراضية `2` عند وجود `planner.replanStep`، و`0` للـ Planner القديم الذي لا يدعم التصحيح. يمكن تمرير `0` صراحةً لتعطيل الإعادة.
+- عند التكرار يُسجَّل حدث `step_retrying` في الـ Ledger بترتيب `append` متسلسل، لذا لا تنكسر سلسلة `prev`/`hash`. الاختبار `react-orchestrator.test.ts` يتحقق من `Ledger.verify().valid === true` بعد إعادة واحدة وبعد استنفاد المحاولات.
+- فشل `replanStep` نفسه لا يُسقط المهمة: تُحتفظ الخطوة الحالية وتُستهلك المحاولة.
+- السياسة (PolicyEngine) تُقيَّم قبل كل محاولة، بما في ذلك الخطوات المصححة؛ لا تتجاوز أي خطوة مصححة البوابة. ونجاح التنفيذ لا يكفي إن كانت الأدلة المستقلة تُظهر فشلًا.
+
+### LLM/Core — `ProviderFabric` داخل `FabricPlanner`
+
+- `FabricPlanner` هو المسار الوحيد للمزودات داخل Core: لا شروط خاصة بمزود في `Orchestrator`، والترتيب يمرَّر صراحةً (`providerOrder`).
+- الترتيب الافتراضي: `openrouter` ثم `gemini`، ويُبنى ديناميكيًا من `isOpenRouterConfigured()` و`isGeminiConfigured()`. عند غياب المفتاحين يبقى `OfflinePlanner` هو الافتراضي (وضع المحاكاة يعمل بلا مفاتيح).
+- `FallbackPlanner` يُبقي السلوك التاريخي: فشل كل المزودات ⇒ هبوط إلى الخطة الحتمية مع سبب مفصح عنه في `summary`.
+- `OpenRouterPlanner` بقي موجودًا ويُفوَّض إلى `FabricPlanner` بترتيب `["openrouter"]` فقط، حفاظًا على التوافق المصدري.
+- لا يوجد اختبار مزود حي: الاختبارات تحاكي `ModelProvider` بالكامل (`vi.fn()`)، ولا شبكة حقيقية في CI.
+
+### اختبارات مثبتة لهذه المرحلة
+
+- `packages/llm/provider-fallback.test.ts` و`packages/core/fabric-planner.test.ts`: التحول التلقائي OpenRouter → Gemini مع توثيق `providerAttempts` ووصول الخطة إلى Core؛ وضع Offline عند غياب المفاتيح.
+- `packages/core/react-orchestrator.test.ts`: الفشل ⇒ `replanStep` ⇒ النجاح، واستنفاد المحاولات ⇒ `FAILED`، وفحص السياسة والأدلة والملفات المزامنة، مع اتساق تجزئة الـ Ledger.
+
+### Track 4 — ملفات ثنائية ومزامنة Pyodide FS
+
+- `Workspace.writeBinary/readBinary` يخزنان `Uint8Array` بنسخ دفاعية؛ `snapshot()` و`all()` يحتفظان بعقد الملفات النصية، بينما `sandboxSnapshot()` يصدر ملفات ثنائية بصيغة `{ base64 }` بجانب النصوص. `totalBytes()` يقيس البايتات الفعلية.
+- عند `python_run` تُرسل لقطة مساحة العمل عبر الوسيط الاختياري الثالث لـ `SandboxBridge.requestRun`، وحقل `files?` الاختياري في `sandbox_request`. يمررها Web UI إلى عامل Pyodide. لا يلزم تعديل جسور Sandbox القديمة.
+- العامل ينشئ مجلدًا منفصلًا لكل تشغيل ويكتب محتويات الملفات عبر `py.FS.writeFile` ثم `py.FS.chdir` قبل التنفيذ؛ يرفض المسارات الخارجة ويمتنع عن التنفيذ إذا فشل التزامن. حد الملفات 1000 وحد الحمولة 5 MB، دون مزامنة عكسية من العامل إلى الخادم.
+- اختبارات `workspace-binary.test.ts` و`pyodide-worker.test.ts` تغطي بايتات ثنائية، احتواء المسارات، وترتيب المزامنة مع التنفيذ. لا Browser E2E فعلي بعد.
+
+## 8. Track 3 — حفظ سجل الأحداث عبر مثيلات الخادم
+
+- `EventJournal` عقد إضافي مستقل عن واجهة `Store` ذات العمليات الست. `MemoryEventJournal` للاختبار، و`SupabaseEventJournal` يخزن `(task_id, seq, event)` بترتيب ثابت في جدول `task_events`، وSQL الإعداد في `packages/store/task-events.sql` (يُشغّل بعد إنشاء `tasks`). لا يُستخدم مفتاح الخدمة في المتصفح.
+- قبل بدء المهمة يُنتظر `createTask`؛ فشل التخزين يرد بـ503 بدل إعادة taskId غير موجود. أحداث المهمة تُكتب بالتتابع؛ polling وSSE يقرآن من Journal عند توفره، و`/files` يُعيد آخر محتوى لكل مسار من تاريخ الأحداث. تستمر عقود أغلفة HTTP السابقة.
+- `GET /stream` يستعيد الأحداث المخزنة أولًا ثم يستعلم كل ثانية عن الأحداث الجديدة، ما يسمح لمثيل مختلف بعرض نتيجة مثيل التنفيذ. اختبار `agent-runtime.test.ts` ينشئ مثيلَي Runtime يشتركان في مخزن وجريدة ويختبر `after` و`done` والملفات؛ واختبار REST يستخدم fetch mock لا Supabase حيًا.
+- **حدود صريحة:** لا يجعل هذا تنفيذ `Orchestrator` أو انتظار `pendingSandbox` قابلين للاستئناف إذا مات مثيل التنفيذ؛ ستنتهي مهلة الطلبات المعلّقة. لا تُدعَى المهمة VERIFIED بسبب مجرد استمرار التاريخ. يلزم عامل خارجي دائم، طابور مهام وlease/fencing للانتقال إلى تنفيذ serverless موزع حقيقي. SSE طويل العمر ليس مضمونًا على جميع منصات serverless؛ استخدم polling للاستعادة.
+
+### Sub-Tracks 3.1–3.2 — لقطات فحص قابلة للاستعادة
+
+- `packages/core/src/checkpoint.ts` يحفظ `workspace` (نص + base64 للبايتات) وLedger كاملًا مع `lastLedgerHash`؛ الاستعادة ترفض السلسلة الناقصة أو المعدّلة والمسارات غير الآمنة، ولا تعيد حساب التجزئات على مواد معدّلة. `currentStepIndex` يصف عدد الخطوات التي انتهت فقط، ولا يعني أن التشغيل سيُستأنف منه.
+- `packages/store/src/types.ts` يعرّف `SnapshotStore` مستقلًا عن Core، و`persistent_store.ts` يقدّم Memory/Supabase REST adapters؛ لا تعتمد الحزمة Store على Core أو SDK جديد. SQL الإضافي في `packages/store/src/schema.sql` يضيف `task_snapshots` **بعد** جدول `tasks` الموجود، ولا يعيد تسمية الجداول الحالية.
+- الخادم يحفظ لقطة المهمة **بعد انتهاء التشغيل**، ويمكن لمثيل آخر تحميلها للفحص فقط (`loadCheckpoint`). لا تُحفَظ لقطة لكل خطوة، ولا تستعاد listeners أو sandbox resolvers أو الاستمرار التلقائي لـ Orchestrator. فشل حفظ اللقطة بعد إصدار الحالة النهائية لا يزوّر حالة المهمة؛ يسجَّل الخطأ على الخادم.
+- لتفادي إغراق `jsonb`، يرفض محوّل Supabase JSON أكبر من 512 KB صراحةً. ملفات Binary الأكبر تحتاج adapter تخزين كائنات خارجية مع checksum وmanifest وchunking؛ لا يوجد Redis adapter أو `cela_blobs` مُفعّل، ولا يُدَّعى خلاف ذلك. اختبارات `checkpoint.test.ts` و`snapshot-contract.test.ts` و`checkpoint-runtime.test.ts` تتحقق من البايتات، وسلامة التجزئة، والتحويل بين مثيلين، وإخفاق المحول.
+
+### Sub-Track 3.3 — استعادة بث SSE دون استئناف التنفيذ
+
+- المسار الموجود `GET /api/task/:id/stream` يصدر الآن `id: <seq>` قبل `data:` لكل حدث، ويقرأ `Last-Event-ID` عند إعادة الاتصال؛ يمكن أيضًا تمرير `?after=<seq>` عند إنشاء اتصال جديد. ترويسة إعادة الاتصال لها الأولوية، وتُرفض القيم السالبة أو غير الصحيحة بـ400. الاتصال الأول دون cursor يبدأ من أول حدث (`seq=0`).
+- `seq` مأخوذ من Journal أحداث المهمة `task_events`، **وليس** من `LedgerEntry.seq` أو معرف SQL عالمي. يُعرض فقط ما يأتي بعد cursor دون إعادة إرسال الحدث السابق. تختبر `stream-resume.test.ts` الاتصال الأول، والأولوية، وإعادة الاتصال من مثيل مختلف، وإغلاق المهمة، وتعذّر قراءة المخزن.
+- `EventSource` في الواجهة يترك المتصفح يعيد الاتصال تلقائيًا بدل إغلاق المهمة عند خطأ SSE، ويمنع تشغيل `sandbox_request` ذي `runId` نفسه مرتين داخل الجلسة. ما زالت حالة `pendingSandbox` حصرية لمثيل التنفيذ الأصلي؛ استئناف عرض البث لا يستأنف Orchestrator بعد موته.
+
+## 9. سجل المخاطر الحالي
 
 هذه ملاحظات معمارية وليست مبررًا لإعادة البناء:
 
-1. **Runtime والـevent buffer داخل الذاكرة:** مناسب للتطوير، لكنه لا يضمن استئناف المهمة بين Serverless instances. يعالج عبر Event/Task repository خلف Interface، لا باستبدال Orchestrator.
-2. **SSE ليس ضمان نقل دائم:** polling endpoint موجود كمسار استئناف، لكن التاريخ نفسه يحتاج Store دائمًا قبل اعتباره durable.
-3. **التخزين الخارجي اختياري وbest-effort:** يلزم integration tests حقيقية قبل الاعتماد عليه تشغيليًا.
+1. **تنفيذ Runtime وانتظار Sandbox لا يزالان داخل الذاكرة:** سجل المهمة يمكن قراءته عبر المثيلات عند تفعيل Supabase، لكن لا يوجد نقل لملكية تنفيذ المهمة عند موت مثيلها.
+2. **SSE ليس ضمان نقل دائم:** polling endpoint متاح لاستعادة أحداث Journal من مثيل آخر؛ على منصات serverless يظل حد مدة الاتصال قائمًا.
+3. **التخزين الخارجي اختياري:** إعداد جدول `task_events` ومفاتيح Supabase شرط للاستعادة بين المثيلات، ويلزم integration tests حقيقية قبل الاعتماد عليه تشغيليًا.
 4. **لا Browser E2E حاليًا:** بناء Next واختبارات Route Handlers لا يثبتان Pyodide worker أو رحلة المستخدم كاملة.
-5. **OpenRouter live path غير داخل CI:** الاختبارات الحالية تثبت الفصل والعقود، لا توافر مزود خارجي.
+5. **مسارات المزودات الحية (OpenRouter/Gemini) غير داخل CI:** الاختبارات الحالية تثبت الفصل والعقود وسلوك التحول بين المزودات عبر محاكاة، لا توافر مزود خارجي فعلي.
 6. **لا version prefix للـAPI الحالي:** الميزات المتوافقة تضاف حاليًا، أما أي عقد غير متوافق مستقبلًا فيوضع تحت نسخة جديدة.
 
-## 8. تعريف الإنجاز
+## 10. تعريف الإنجاز
 
 لا تعتبر القدرة مكتملة لمجرد أن البناء نجح. الحد الأدنى:
 

@@ -10,6 +10,6 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const files = getRuntime().workspaceFiles(id);
+  const files = await getRuntime().workspaceFiles(id);
   return NextResponse.json({ taskId: id, files });
 }
