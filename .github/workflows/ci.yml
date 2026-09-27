@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install
+        run: npm install --no-fund --no-audit
+      - name: Core tests
+        run: npx vitest run --no-cache
+      - name: Type check & build web
+        run: npx next build
+        working-directory: apps/web
+        env:
+          # build-time placeholders; real keys live in Vercel env only
+          OPENROUTER_API_KEY: ""
