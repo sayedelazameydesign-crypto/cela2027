@@ -68,7 +68,8 @@ jobs:
       - name: Install e2e harness (own lockfile)
         run: npm ci --prefix e2e --no-fund --no-audit
       - name: Playwright version parity with the container
-        run: npx --prefix e2e playwright --version
+        run: npx playwright --version
+        working-directory: e2e
       - name: Build application (production)
         run: npx next build
         working-directory: apps/web
