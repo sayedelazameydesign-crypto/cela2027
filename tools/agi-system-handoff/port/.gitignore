@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# runtime artefacts produced by demo / tests / CI gate
+agi-sandbox*/
+.ci-sandbox/
+sandbox/
+*-ledger/
+.agi/
+*.jsonl
+
+# editors / OS
+.vscode/
+.idea/
+.DS_Store

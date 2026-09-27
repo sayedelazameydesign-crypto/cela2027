@@ -1,0 +1,63 @@
+{
+  "language": "node",
+  "scans": {
+    "python": {
+      "include": [],
+      "localPackages": [],
+      "declaredThirdParty": []
+    }
+  },
+  "workspaces": {
+    "scopePattern": "^(@cela/[^/]+)",
+    "layers": ["packages", "apps"],
+    "tsconfigBase": "tsconfig.base.json",
+    "aliasPairs": [
+      {
+        "app": "apps/web/tsconfig.json",
+        "base": "tsconfig.base.json",
+        "layers": ["apps"]
+      }
+    ],
+    "forbiddenAliasPrefixes": [
+      {
+        "layers": ["packages"],
+        "prefixes": ["@/"],
+        "message": "crosses from a package into the web app"
+      }
+    ],
+    "allowedDependencies": {
+      "@cela/core": ["@cela/llm", "@cela/tools"],
+      "@cela/llm": [],
+      "@cela/sandbox": [],
+      "@cela/store": [],
+      "@cela/tools": [],
+      "@cela/web": ["@cela/core", "@cela/llm", "@cela/sandbox", "@cela/store"]
+    }
+  },
+  "verify": [
+    {
+      "name": "architecture boundaries",
+      "command": "node tools/governance-template/scripts/check-architecture.mjs"
+    },
+    {
+      "name": "change policy",
+      "command": "node tools/governance-template/scripts/check-change-policy.mjs"
+    },
+    {
+      "name": "lockfile reproducibility",
+      "command": "node tools/governance-template/scripts/check-lockfile.mjs"
+    },
+    {
+      "name": "typescript strict",
+      "command": "npx tsc -p tsconfig.base.json --noEmit"
+    },
+    {
+      "name": "tests",
+      "command": "npx vitest run --no-cache"
+    },
+    {
+      "name": "production build",
+      "command": "npm run build"
+    }
+  ]
+}

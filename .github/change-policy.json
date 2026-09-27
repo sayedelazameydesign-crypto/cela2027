@@ -1,12 +1,11 @@
 {
-  "classification": "C",
-  "reason": "Add provider-neutral contracts, preserve OpenRouter compatibility, and introduce an isolated Gemini adapter without changing Core, Planner, or runtime routing.",
-  "protectedChanges": [
-    "packages/llm/src/fabric.ts",
-    "packages/llm/src/index.ts",
-    "packages/llm/src/providers/gemini.ts",
-    "packages/llm/src/providers/openrouter.ts",
-    "packages/llm/src/types.ts"
+  "classification": "A",
+  "reason": "Additive, docs-and-tooling only; scope announced in three parts. (1) docs/STATUS.md: measured project status - gate re-run on 1d046e9, P0 measured inside real Pyodide 0.26.4 (ModuleNotFoundError), delete_file invariant breach with git-history evidence, AWAITING_SANDBOX classified as design debt not regression, and a fake audit. (2) README.md: claims the measurement disproves are marked inline in context, not merely linked. (3) tools/governance-template + tools/agi-system-handoff: the governance system extracted as a portable template (change-policy guard in node and Python, generalized workspace architecture guard, Python import-boundary guard, lockfile guard, single verify runner, STATUS/change-policy/CI templates) with 9 self-tests including equivalence to the repository guards, plus a measured agi-system port exported as patch/bundle because push access to that repository is not granted to this session. No runtime path, provider, planner, route handler, or contract is touched; the template is inert (no package.json, test file named run-tests.mjs) so the root gate stays 53/53. P0 sandbox/workspace sync remains deliberately deferred to a separate session behind its own Freeze - Characterize - Extend - Verify cycle.",
+  "protectedPatterns": [
+    "^packages/(core|llm|sandbox|store|tools)/src/",
+    "^apps/web/app/api/(?:.*\\/)?route\\.ts$",
+    "^apps/web/lib/agent-runtime\\.ts$"
   ],
+  "protectedChanges": [],
   "allowedBinaryChanges": []
 }

@@ -1,0 +1,36 @@
+{
+  "language": "python",
+  "scans": {
+    "python": {
+      "include": ["core", "demo.py", "tests"],
+      "localPackages": ["core", "tests"],
+      "declaredThirdParty": []
+    }
+  },
+  "verify": [
+    {
+      "name": "change policy",
+      "command": "python3 scripts/check-change-policy.py"
+    },
+    {
+      "name": "import boundary (dependency-free claim)",
+      "command": "python3 scripts/check-import-boundary.py ."
+    },
+    {
+      "name": "unit tests",
+      "command": "python3 -m unittest discover -s tests -t ."
+    },
+    {
+      "name": "demo smoke (6 scenarios incl. adversarial)",
+      "command": "python3 demo.py"
+    },
+    {
+      "name": "compile check",
+      "command": "python3 -m compileall -q core demo.py tests scripts"
+    },
+    {
+      "name": "cli smoke (doctor/run/verify/replay)",
+      "command": "rm -rf .ci-sandbox && python3 -m core doctor --sandbox .ci-sandbox --json > /dev/null && python3 -m core run --sandbox .ci-sandbox --goal-type create_file --param path=ci.txt --param content=ci --json > /dev/null && python3 -m core verify --sandbox .ci-sandbox --json > /dev/null && python3 -m core replay --sandbox .ci-sandbox --json > /dev/null && rm -rf .ci-sandbox"
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+chore(governance): install the cela2027 governance template + measured status
+
+Additive governance layer. Nothing under core/ is touched and no dependency is
+added, so the dependency-free invariant and every runtime contract (Kernel,
+Policy, Verifier, EventLedger, CLI exit codes) are unchanged.
+
+What is installed
+- scripts/check-change-policy.py: Python port of the cela2027 change guard
+  (stdlib only, byte-for-byte identical output to the node original, proven by
+  an equivalence test in the template repository). Protected paths are declared
+  here as ^core/.*\.py$ and ^demo\.py$.
+- scripts/check-import-boundary.py: turns the README claim "no external
+  dependencies" into an enforced gate: 19 files, 154 imports (110 stdlib,
+  44 local, 0 third party). A new third-party import fails the gate unless
+  declared in .governance/project.json in the same change.
+- scripts/verify.py: single gate runner; stops at first failure, prints a
+  measured summary. python3 scripts/verify.py -> 6 gates, ~3.0s, all PASS.
+- .governance/project.json, .github/change-policy.json (classification A).
+- docs/STATUS.md: measured status in the cela2027 format - gate results with
+  literal output, what is proven, what is NOT proven, design debt, fake audit,
+  and priorities with A-F classifications.
+- ci.yml: fetch-depth: 0 (a shallow checkout collapses the change-policy base
+  onto HEAD and the guard passes blindly) + a Compatibility gate step.
+- .gitignore: .ci-sandbox/ produced by the CLI smoke step was untracked noise.
+- README: the gate command and a link to the measured status.
+
+Measured, not assumed
+- 86 unit tests OK, zero mocks/patches in tests (grep: no results); everything
+  runs against real tempfile sandboxes.
+- demo.py: ALL EXPECTATIONS MET: True, including the adversarial lying executor
+  -> INCONCLUSIVE and path traversal -> DENIED.
+- Packaging claim verified in an isolated venv: pip install -e . --no-deps then
+  agi-kernel doctor --json -> exit 0, chain_valid true.
+
+Findings recorded as debt, not fixed here
+- demo SUMMARY prints 5 of 6 scenarios (ledger replay is executed and asserted
+  but not displayed).
+- py.typed ships without any static type gate: an untested promise.
+- no coverage measurement, no lint, no CI packaging step, no SAFE_EVOLUTION doc.
