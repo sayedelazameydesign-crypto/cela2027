@@ -20,10 +20,16 @@ export interface ChatOptions {
   timeoutMs?: number;
 }
 
+/**
+ * Free-first chain (roadmap Phase 3): zero-cost models first, paid as last
+ * resort. Slugs evolve — verify the current free catalog at
+ * https://openrouter.ai/models?max_price=0 and override via OPENROUTER_MODELS.
+ */
 const DEFAULT_MODELS = [
+  "deepseek/deepseek-chat-v3.1:free",
+  "meta-llama/llama-3.3-70b-instruct:free",
+  "google/gemini-2.0-flash-exp:free",
   "anthropic/claude-sonnet-4.5",
-  "openai/gpt-4o-mini",
-  "google/gemini-2.0-flash-001",
 ];
 
 export function isOpenRouterConfigured(): boolean {
