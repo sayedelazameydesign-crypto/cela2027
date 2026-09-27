@@ -128,3 +128,5 @@ node e2e/scripts/check-baseline.mjs
 - Node `v22.22.3`، npm `10.9.8`، Git `2.39.5`، Debian 12.
 - الشبكة المتاحة: `registry.npmjs.org`، `github.com`. غير المتاح: `mcr.microsoft.com`، CDNs المتصفحات (`cdn.playwright.dev`)، `cdn.jsdelivr.net` (Pyodide).
 - نتيجة ذلك: اختبارات المتصفح تُشغَّل محليًا بمتصفح Chromium بديل من نفس الإصدار الرئيسي عند توفره (`E2E_CHROMIUM_EXECUTABLE`)، والمرجع النهائي هو التشغيل داخل الحاوية المثبتة في CI.
+- المتصفح البديل يحتاج مكتبات SwiftShader بجوار الملف التنفيذي (`libEGL.so`، `libGLESv2.so`، `libvulkan.so.1`، `libvk_swiftshader.so`، `vk_swiftshader_icd.json`) وإلا يفشل إنشاء سياق WebGL وتفرغ الصفحة (انظر توصيف WebGL في `E2E_PLAN.md` §4). داخل حاوية Playwright الرسمية يعمل WebGL عبر SwiftShader افتراضيًا.
+- نتائج التشغيل المحلي للمرحلة 5 على هذا الفرع: `playwright test --project=mocked-app-api --repeat-each=3` ⇒ 30/30 ناجحة (2026-09-27)، و`node --test` للـproxy والـmock ⇒ 17/17.
