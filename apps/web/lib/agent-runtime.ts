@@ -136,9 +136,9 @@ class Runtime {
     this.tasks.set(id, t);
 
     const bridge = {
-      requestRun: async (taskId: string, code: string): Promise<SandboxRunResult> => {
+      requestRun: async (taskId: string, code: string, files?: Record<string, string | { base64: string }>): Promise<SandboxRunResult> => {
         const runId = `${taskId}:${randomUUID().slice(0, 6)}`;
-        this.emit(taskId, { type: "sandbox_request", taskId, runId, code });
+        this.emit(taskId, { type: "sandbox_request", taskId, runId, code, files });
         return new Promise<SandboxRunResult>((resolve) => {
           // store resolver under composite runId emitted above
           this.pendingSandbox.set(runId, resolve);

@@ -1,8 +1,7 @@
 /**
  * Planner — converts a goal into a structured Plan.
- * Two implementations:
- *  - OpenRouterPlanner: LLM-backed (Claude/GPT/Gemini via OpenRouter)
- *  - OfflinePlanner: deterministic simulation used when no API key is set
+ * FabricPlanner routes to OpenRouter/Gemini; OpenRouterPlanner preserves the legacy entry point.
+ * OfflinePlanner: deterministic simulation used when no API key is set
  *    (same spirit as Celia v2.5's "Offline Simulation" mode)
  */
 
@@ -43,12 +42,14 @@ const SYSTEM_PROMPT = `أنت مخطِّط وكيل برمجي ذكي (cela2027)
 export class FabricPlanner implements Planner {
   private fabric: ProviderFabric;
   private providerOrder: string[];
+  private models?: string[];
 
   constructor(opts?: { fabric?: ProviderFabric; providerOrder?: string[]; models?: string[] }) {
     this.fabric =
       opts?.fabric ??
       new ProviderFabric([new OpenRouterProvider(), new GeminiProvider()]);
     this.providerOrder = opts?.providerOrder ?? ["openrouter", "gemini"];
+    this.models = opts?.models;
   }
 
   async plan(goal: string, context?: string): Promise<Plan> {
@@ -62,7 +63,7 @@ export class FabricPlanner implements Planner {
     const res = await this.fabric.generate({
       providerOrder: this.providerOrder,
       messages,
-      options: { temperature: 0.2, maxTokens: 8000 },
+      options: { models: this.providerOrder.length === 1 && this.providerOrder[0] === "openrouter" ? this.models : undefined, temperature: 0.2, maxTokens: 8000 },
     });
     return parsePlan(res.text);
   }
@@ -93,7 +94,8 @@ export class FabricPlanner implements Planner {
     });
 
     const parsed = parseSingleStep(res.text);
-    return parsed ?? failedStep;
+    if (!parsed) throw new Error("Planner returned unparseable corrected step");
+    return parsed;
   }
 }
 
@@ -256,7 +258,7 @@ export class OfflinePlanner implements Planner {
 }
 
 /**
- * FallbackPlanner — tries the LLM planner first; if OpenRouter fails
+ * FallbackPlanner — tries the LLM planner first; if all configured providers fail
  * entirely (quota exhausted, all models down), degrades gracefully to
  * the deterministic offline plan instead of failing the task.
  * (Roadmap Phase 3: quota guard — no silent failures.)
@@ -274,7 +276,7 @@ export class FallbackPlanner implements Planner {
       const plan = await this.fallback.plan(goal, context);
       return {
         ...plan,
-        summary: `⚠ تعذر استخدام OpenRouter (${String(e?.message ?? e).slice(0, 160)}) — تم التحويل تلقائياً إلى وضع المحاكاة المحلية.\n\n${plan.summary}`,
+        summary: `⚠ تعذر استخدام المزودات (${String(e?.message ?? e).slice(0, 160)}) — تم التحويل تلقائياً إلى وضع المحاكاة المحلية.\n\n${plan.summary}`,
       };
     }
   }

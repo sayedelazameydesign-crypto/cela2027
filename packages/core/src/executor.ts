@@ -16,7 +16,7 @@ export interface SandboxRunResult {
 
 /** implemented by the API layer; resolves when the browser worker replies */
 export interface SandboxBridge {
-  requestRun(taskId: string, code: string): Promise<SandboxRunResult>;
+  requestRun(taskId: string, code: string, files?: Record<string, string | { base64: string }>): Promise<SandboxRunResult>;
 }
 
 export interface ToolContext {

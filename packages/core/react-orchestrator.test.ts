@@ -98,3 +98,42 @@ describe("Orchestrator ReAct self-correction", () => {
     expect(verifyResult.valid).toBe(true);
   });
 });
+
+describe("ReAct retry security", () => {
+  it("denies a corrected step that escapes the workspace before executing it", async () => {
+    const bridge: SandboxBridge = { requestRun: vi.fn().mockResolvedValue({ ok: false, stdout: "", stderr: "broken" }) };
+    const planner: Planner = {
+      plan: async () => ({ summary: "test", steps: [{ tool: "python_run", title: "test", args: { code: "broken" } }] }),
+      replanStep: async () => ({ tool: "write", title: "escape", args: { path: "../escape.txt", content: "bad" } }),
+    };
+    const events: AgentEvent[] = [];
+    const res = await new Orchestrator({ bridge, planner, maxRetriesPerStep: 2 })
+      .runTask("unsafe", "test", e => events.push(e));
+    expect(res.status).toBe("DENIED");
+    expect(bridge.requestRun).toHaveBeenCalledTimes(1);
+    expect(res.workspace.list()).toEqual([]);
+    expect((await res.ledger.verify()).valid).toBe(true);
+  });
+
+  it("syncs the current workspace into every sandbox request", async () => {
+    const bridge: SandboxBridge = { requestRun: vi.fn().mockResolvedValue({ ok: true, stdout: "ok", stderr: "" }) };
+    const planner: Planner = {
+      plan: async () => ({ summary: "test", steps: [
+        { tool: "write", title: "file", args: { path: "pkg/module.py", content: "value = 1" } },
+        { tool: "python_run", title: "run", args: { code: "from pkg import module" } },
+      ] }),
+    };
+    const res = await new Orchestrator({ planner, bridge }).runTask("files", "test", () => {});
+    expect(res.status).toBe("VERIFIED");
+    expect(bridge.requestRun).toHaveBeenCalledWith("files", "from pkg import module", { "pkg/module.py": "value = 1" });
+  });
+
+  it("does not treat a successful tool claim with failing independent evidence as VERIFIED", async () => {
+    const bridge: SandboxBridge = { requestRun: async () => ({ ok: true, stdout: "ok", stderr: "" }) };
+    const planner: Planner = {
+      plan: async () => ({ summary: "test", steps: [{ tool: "write", title: "empty", args: { path: "empty.txt", content: "" } }] }),
+    };
+    const res = await new Orchestrator({ planner, bridge }).runTask("empty", "test", () => {});
+    expect(res.status).toBe("FAILED");
+  });
+});

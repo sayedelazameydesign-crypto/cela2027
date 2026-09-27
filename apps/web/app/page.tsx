@@ -93,7 +93,7 @@ export default function Home() {
         }).catch(() => {});
       };
       worker.addEventListener("message", onMessage);
-      worker.postMessage({ runId: ev.runId, code: ev.code });
+      worker.postMessage({ runId: ev.runId, code: ev.code, files: ev.files });
     },
     [ensureWorker]
   );

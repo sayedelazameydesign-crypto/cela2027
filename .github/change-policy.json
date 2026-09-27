@@ -1,9 +1,13 @@
 {
   "classification": "B",
-  "reason": "Wire ProviderFabric into Core Planner with Gemini fallback and add ReAct self-correction retry loop to Orchestrator with ledger integrity.",
+  "reason": "Implement ReAct retries with per-attempt policy enforcement and independent evidence checks, ProviderFabric planner failover, binary workspace files and Pyodide FS synchronization through additive contracts.",
   "protectedChanges": [
+    "apps/web/lib/agent-runtime.ts",
+    "packages/core/src/events.ts",
+    "packages/core/src/executor.ts",
     "packages/core/src/orchestrator.ts",
-    "packages/core/src/planner.ts"
+    "packages/core/src/planner.ts",
+    "packages/core/src/workspace.ts"
   ],
   "allowedBinaryChanges": []
 }

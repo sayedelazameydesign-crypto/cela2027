@@ -37,7 +37,11 @@ export class Orchestrator {
     this.planner = opts.planner ?? createDefaultPlanner();
     this.policy = opts.policy ?? new PolicyEngine();
     this.bridge = opts.bridge;
-    this.maxRetriesPerStep = opts.maxRetriesPerStep ?? 0;
+    const retries = opts.maxRetriesPerStep ?? (this.planner.replanStep ? 2 : 0);
+    if (!Number.isSafeInteger(retries) || retries < 0 || retries > 10) {
+      throw new RangeError("maxRetriesPerStep must be an integer between 0 and 10");
+    }
+    this.maxRetriesPerStep = retries;
   }
 
   /** run a full task; returns the workspace snapshot on success */
@@ -106,12 +110,21 @@ export class Orchestrator {
       let evidence: any;
       let status: StepStatus = "FAILED";
       let attempt = 0;
+      let deniedReason: string | null = null;
 
       while (attempt <= this.maxRetriesPerStep) {
+        const retryDecision = this.policy.evaluate(step, ws);
+        if (!retryDecision.allowed) {
+          deniedReason = retryDecision.reason;
+          status = "DENIED";
+          await ledger.append("step_denied", { stepId, tool: step.tool, reason: deniedReason });
+          break;
+        }
+        sandbox = undefined;
         try {
           if (step.tool === "python_run") {
             const code = String(step.args.code ?? "");
-            sandbox = await this.bridge.requestRun(taskId, code);
+            sandbox = await this.bridge.requestRun(taskId, code, ws.sandboxSnapshot());
             result = {
               ok: sandbox.ok,
               output: sandbox.stdout || sandbox.stderr || "(بدون مخرجات)",
@@ -125,9 +138,11 @@ export class Orchestrator {
         }
 
         evidence = verifyStep({ step, result, sandbox }, ws);
-        status = evidence.some((ev: any) => ev.checks.sandbox_ok === false) || !result.ok
-          ? "FAILED"
-          : "VERIFIED";
+        status = !result.ok || evidence.some((ev: any) =>
+          Object.entries(ev.checks).some(([key, value]) =>
+            ["sandbox_ok", "exit_clean", "all_present", "claimed_ok"].includes(key) && value === false
+          )
+        ) ? "FAILED" : "VERIFIED";
 
         if (status === "VERIFIED" || attempt >= this.maxRetriesPerStep) {
           break;
@@ -135,20 +150,23 @@ export class Orchestrator {
 
         attempt++;
         const failureReason = result.ok ? "فشل التحقق بالأدلة" : result.output;
+        if (this.planner.replanStep) {
+          try {
+            const corrected = await this.planner.replanStep(step, failureReason);
+            if (!corrected || typeof corrected.tool !== "string" || !corrected.args || typeof corrected.args !== "object") {
+              throw new Error("Planner returned an invalid corrected step");
+            }
+            step = corrected;
+          } catch {
+            // retain existing step if replanStep fails
+          }
+        }
         await ledger.append("step_retrying", {
           stepId,
           attempt,
           tool: step.tool,
           error: failureReason,
         });
-
-        if (this.planner.replanStep) {
-          try {
-            step = await this.planner.replanStep(step, failureReason);
-          } catch {
-            // retain existing step if replanStep fails
-          }
-        }
       }
 
       emit({
@@ -157,16 +175,20 @@ export class Orchestrator {
         stepId,
         status,
         evidence,
-        error: result?.ok ? undefined : result?.output,
+        error: deniedReason ?? (status === "FAILED" ? result?.output : undefined),
       });
       await ledger.append("step_finished", { stepId, status, evidence });
       records.push({ tool: step.tool, status, evidence });
 
       // surface produced files as artifacts immediately
-      for (const p of ws.list()) {
-        emit({ type: "artifact", taskId, path: p, content: ws.read(p), size: ws.read(p).length });
+      for (const [p, content] of ws.all()) {
+        emit({ type: "artifact", taskId, path: p, content, size: new TextEncoder().encode(content).length });
       }
 
+      if (status === "DENIED") {
+        failed = `السياسة رفضت الخطوة ${stepId}: ${deniedReason}`;
+        break;
+      }
       if (status === "FAILED") {
         failed = `الخطوة ${stepId} (${step.tool}) فشلت: ${result?.output?.slice(0, 300) ?? ""}`;
         break;
@@ -175,7 +197,8 @@ export class Orchestrator {
 
     // 4) Final verification
     const final = verifyRun(records);
-    const status: TaskStatus = failed ? "FAILED" : final.verified ? "VERIFIED" : "FAILED";
+    const status: TaskStatus = records.some((r) => r.status === "DENIED")
+      ? "DENIED" : failed ? "FAILED" : final.verified ? "VERIFIED" : "FAILED";
     const summary = failed ?? final.reason;
 
     emit({ type: "task_status", taskId, status });

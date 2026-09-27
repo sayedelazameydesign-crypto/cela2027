@@ -42,7 +42,7 @@ Architecture dependency + alias boundaries
   → production build
 ```
 
-الحالة الحالية بعد تعميق الحراس ومرحلتي P1/P2 ثم تفعيل Tracks 1+2: **56/56 اختبارًا محليًا** ناجحًا. اختبارات Gemini تستخدم HTTP mock ولا يوجد اختبار مزود حي في هذه المرحلة؛ حارس lockfile يستخدم `npm ci --dry-run`، بينما CI ينفذ `npm ci` فعليًا قبل البوابة.
+الحالة الحالية بعد تعميق الحراس ومرحلتي P1/P2 ثم تفعيل Tracks 1+2: **65/65 اختبارًا محليًا** ناجحًا. اختبارات Gemini تستخدم HTTP mock ولا يوجد اختبار مزود حي في هذه المرحلة؛ حارس lockfile يستخدم `npm ci --dry-run`، بينما CI ينفذ `npm ci` فعليًا قبل البوابة.
 
 لا تعني هذه البوابة وجود Browser E2E أو اتصال حي بالخدمات الخارجية. لا يجوز وصف هاتين البوابتين بالنجاح قبل إضافتهما فعليًا.
 
@@ -237,10 +237,10 @@ Default عند غياب الإعداد الجديد:
 ### Core — `Planner.replanStep?(failedStep, error, context?)`
 
 - **اختياري بالكامل:** أي `Planner` قديم (بما فيه `OfflinePlanner`) يستمر في العمل. غياب `replanStep` يعني صفر استدراك، وهو السلوك الافتراضي.
-- **`OrchestratorOptions.maxRetriesPerStep`** قيمته الافتراضية `0`، أي أن سلوك التشغيل السابق محفوظ بايت ببايت عند عدم تمرير الخيار.
+- **`OrchestratorOptions.maxRetriesPerStep`** قيمته الافتراضية `2` عند وجود `planner.replanStep`، و`0` للـ Planner القديم الذي لا يدعم التصحيح. يمكن تمرير `0` صراحةً لتعطيل الإعادة.
 - عند التكرار يُسجَّل حدث `step_retrying` في الـ Ledger بترتيب `append` متسلسل، لذا لا تنكسر سلسلة `prev`/`hash`. الاختبار `react-orchestrator.test.ts` يتحقق من `Ledger.verify().valid === true` بعد إعادة واحدة وبعد استنفاد المحاولات.
 - فشل `replanStep` نفسه لا يُسقط المهمة: تُحتفظ الخطوة الحالية وتُستهلك المحاولة.
-- السياسة (PolicyEngine) تُقيَّم على الخطوة قبل الدخول إلى حلقة الإعادة؛ الخطوات المصححة لا تتجاوز البوابة.
+- السياسة (PolicyEngine) تُقيَّم قبل كل محاولة، بما في ذلك الخطوات المصححة؛ لا تتجاوز أي خطوة مصححة البوابة. ونجاح التنفيذ لا يكفي إن كانت الأدلة المستقلة تُظهر فشلًا.
 
 ### LLM/Core — `ProviderFabric` داخل `FabricPlanner`
 
@@ -252,8 +252,15 @@ Default عند غياب الإعداد الجديد:
 
 ### اختبارات مثبتة لهذه المرحلة
 
-- `packages/llm/provider-fallback.test.ts`: التحول التلقائي OpenRouter → Gemini مع توثيق `providerAttempts`.
-- `packages/core/react-orchestrator.test.ts`: الفشل ⇒ `replanStep` ⇒ النجاح، واستنفاد المحاولات ⇒ `FAILED`، مع اتساق تجزئة الـ Ledger في الحالتين.
+- `packages/llm/provider-fallback.test.ts` و`packages/core/fabric-planner.test.ts`: التحول التلقائي OpenRouter → Gemini مع توثيق `providerAttempts` ووصول الخطة إلى Core؛ وضع Offline عند غياب المفاتيح.
+- `packages/core/react-orchestrator.test.ts`: الفشل ⇒ `replanStep` ⇒ النجاح، واستنفاد المحاولات ⇒ `FAILED`، وفحص السياسة والأدلة والملفات المزامنة، مع اتساق تجزئة الـ Ledger.
+
+### Track 4 — ملفات ثنائية ومزامنة Pyodide FS
+
+- `Workspace.writeBinary/readBinary` يخزنان `Uint8Array` بنسخ دفاعية؛ `snapshot()` و`all()` يحتفظان بعقد الملفات النصية، بينما `sandboxSnapshot()` يصدر ملفات ثنائية بصيغة `{ base64 }` بجانب النصوص. `totalBytes()` يقيس البايتات الفعلية.
+- عند `python_run` تُرسل لقطة مساحة العمل عبر الوسيط الاختياري الثالث لـ `SandboxBridge.requestRun`، وحقل `files?` الاختياري في `sandbox_request`. يمررها Web UI إلى عامل Pyodide. لا يلزم تعديل جسور Sandbox القديمة.
+- العامل ينشئ مجلدًا منفصلًا لكل تشغيل ويكتب محتويات الملفات عبر `py.FS.writeFile` ثم `py.FS.chdir` قبل التنفيذ؛ يرفض المسارات الخارجة ويمتنع عن التنفيذ إذا فشل التزامن. حد الملفات 1000 وحد الحمولة 5 MB، دون مزامنة عكسية من العامل إلى الخادم.
+- اختبارات `workspace-binary.test.ts` و`pyodide-worker.test.ts` تغطي بايتات ثنائية، احتواء المسارات، وترتيب المزامنة مع التنفيذ. لا Browser E2E فعلي بعد.
 
 ## 8. سجل المخاطر الحالي
 
