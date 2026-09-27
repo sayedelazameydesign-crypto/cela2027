@@ -11,6 +11,7 @@ export {
   openRouterChat,
   openRouterChatDetailed,
 } from "./providers/openrouter";
+export { GeminiProvider, isGeminiConfigured } from "./providers/gemini";
 export { ProviderFabric } from "./fabric";
 export type {
   FabricRequest,

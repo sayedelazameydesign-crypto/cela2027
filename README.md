@@ -24,7 +24,7 @@ cela2027/
 │   ├── components/NetworkGraph.tsx   شبكة خط الأنابيب 3D
 │   └── public/pyodide-worker.js   صندوق Python في المتصفح
 ├── packages/core/       النواة: orchestrator, policy, ledger, planner, verifier, workspace
-├── packages/llm/        ModelProvider + ProviderFabric foundation + OpenRouter
+├── packages/llm/        ModelProvider + ProviderFabric + OpenRouter/Gemini adapters
 ├── packages/sandbox/    واجهة Sandbox الموحدة (Pyodide الآن / Docker لاحقاً)
 ├── packages/store/      طبقة التخزين (ذاكرة الآن / Supabase لاحقاً)
 ├── docs/ARCHITECTURE.md وثائق البنية
@@ -41,7 +41,7 @@ npm install
 # 2) (اختياري) إعداد أسرار السيرفر محليًا — بدونه يعمل وضع المحاكاة
 # Next.js يعمل من apps/web، لذلك ملف البيئة المحلي يوضع هناك.
 cp .env.example apps/web/.env.local
-# OPENROUTER_API_KEY للمخطط الحالي؛ مفاتيح المزودين الآخرين غير مستهلكة في P1.
+# OPENROUTER_API_KEY للمخطط الحالي؛ GEMINI_API_KEY للـAdapter المعزول في P2.
 
 # 3) بوابة التوافق الكاملة: architecture/change policy + lockfile + types + tests + build
 npm run verify
@@ -73,7 +73,8 @@ npm run dev    # ثم افتح http://localhost:3000
 | صندوق Pyodide بالمتصفح | ✓ يعمل |
 | سجل مُهاش + تحقق بالأدلة | ✓ يعمل |
 | مخطِّط OpenRouter | ✓ (يعمل بوضع المحاكاة بدون مفتاح) |
-| ModelProvider + ProviderFabric | ✓ أساس تعاقدي؛ OpenRouter فقط، وغير مفعّل في Planner عبر Fabric بعد |
+| ModelProvider + ProviderFabric | ✓ أساس تعاقدي؛ غير مفعّل في Planner بعد |
+| Gemini Adapter | ✓ P2 باختبارات HTTP محاكاة؛ غير مفعّل في runtime |
 | تصفح الإنترنت | مؤجل للمرحلة 2 |
 | الوكلاء المتعددون / التحسين الذاتي (SICA) | مؤجل |
 

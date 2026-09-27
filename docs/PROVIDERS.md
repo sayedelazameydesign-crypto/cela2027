@@ -1,10 +1,10 @@
-# Provider contract — P1 evidence
+# Provider contracts — P1/P2 evidence
 
 ## Proven state
 
 `main` originally contained one implementation in `packages/llm/src/index.ts`: OpenRouter functions with an internal model fallback chain. `packages/core/src/planner.ts` imported `openRouterChat` and `isOpenRouterConfigured` directly.
 
-This P1 change is intentionally limited to reorganizing that implementation behind additive contracts:
+P1 introduced the provider-neutral contracts and moved the existing OpenRouter implementation without changing Core. P2 adds only the Gemini adapter:
 
 ```text
 packages/llm/src/
@@ -12,10 +12,11 @@ packages/llm/src/
 ├── types.ts
 ├── fabric.ts
 └── providers/
-    └── openrouter.ts
+    ├── openrouter.ts
+    └── gemini.ts       # P2
 ```
 
-No Gemini or NVIDIA adapter is claimed in this phase. Repository secrets do not prove runtime integration.
+No NVIDIA adapter or workflow orchestration is claimed in P2. Repository secrets do not prove runtime integration.
 
 ## Stable contracts
 
@@ -31,7 +32,7 @@ interface ModelProvider {
 
 ## Backward compatibility
 
-The existing public exports remain available with their original result shapes:
+The existing public OpenRouter exports remain available with their original result shapes:
 
 ```ts
 openRouterChat(messages, options): Promise<string>
@@ -39,9 +40,9 @@ openRouterChatDetailed(messages, options): Promise<ChatResult>
 isOpenRouterConfigured(): boolean
 ```
 
-Those wrappers now delegate to `OpenRouterProvider`. The `provider` evidence field is removed before returning the legacy `ChatResult`, so existing consumers do not observe a response-shape change.
+Those wrappers delegate to `OpenRouterProvider`. The `provider` evidence field is removed before returning the legacy `ChatResult`, so existing consumers do not observe a response-shape change.
 
-`packages/core/src/planner.ts` is unchanged and therefore preserves:
+`packages/core/src/planner.ts` remains unchanged:
 
 ```text
 OpenRouterPlanner
@@ -55,9 +56,22 @@ FallbackPlanner
 
 Provider fallback and application fallback remain separate. The Fabric is exported but not activated in runtime.
 
+## P2: Gemini adapter
+
+`GeminiProvider` translates the shared chat contract to the Gemini `generateContent` HTTP boundary:
+
+- `system` messages become `systemInstruction`.
+- `assistant` becomes Gemini's `model` role.
+- the API key is sent in `x-goog-api-key`, not in the URL.
+- `GEMINI_API_KEY` is preferred; `GOOGLE_API_KEY` is a compatibility alias.
+- exactly one model is attempted; P2 introduces no model/provider fallback policy.
+- successful responses retain the shared evidence shape with an empty `attempts` list.
+
+P2 uses mocked HTTP contract tests only. It does not register Gemini in a runtime Fabric, change provider selection, or consume live quota.
+
 ## Health semantics
 
-`health()` in P1 reports configuration state only:
+`health()` reports configuration state only:
 
 ```text
 configured | unconfigured
@@ -67,14 +81,18 @@ It does not spend quota or perform a live request. A network health probe belong
 
 ## Secret boundaries
 
-Only `OPENROUTER_API_KEY` is consumed by the implemented provider in P1. `GEMINI_API_KEY` and `NVIDIA_API_KEY` may exist in GitHub Actions Secrets, but they remain unused until their adapters are introduced and tested in separate changes.
+Implemented providers consume only:
 
-GitHub Actions secrets are not automatically available to local development, Arena preview, Vercel, or other runtime environments.
+```text
+OpenRouterProvider → OPENROUTER_API_KEY
+GeminiProvider     → GEMINI_API_KEY | GOOGLE_API_KEY
+```
+
+`NVIDIA_API_KEY` may exist in GitHub Actions Secrets, but remains unused until its adapter is introduced and tested separately. GitHub Actions secrets are not automatically available to local development, Arena preview, Vercel, or other runtime environments.
 
 ## Deferred stages
 
 ```text
-P2  Gemini adapter + mocked contract tests
 P3  NVIDIA adapter + mocked contract tests
 P4  routing policy and cost evidence
 P5  Planner injection behind a feature flag
@@ -86,4 +104,4 @@ Do not add provider branches to `Orchestrator`, Planner, or workflow YAML. TypeS
 
 ## Not a Nimna/FastAPI repository
 
-This repository has no `config.py`, `core/agent.py`, `NIMNA_ENV`, or FastAPI startup contract. `NIMNA_API_KEY` is therefore not added: it would be an unused secret without an authentication contract.
+This repository has no `config.py`, `core/agent.py`, `NIMNA_ENV`, or FastAPI startup contract. `NIMNA_API_KEY` is not added: it would be an unused secret without an authentication contract.
