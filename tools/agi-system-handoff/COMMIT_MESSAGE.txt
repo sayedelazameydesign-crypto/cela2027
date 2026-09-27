@@ -37,4 +37,3 @@ Findings recorded as debt, not fixed here
   but not displayed).
 - py.typed ships without any static type gate: an untested promise.
 - no coverage measurement, no lint, no CI packaging step, no SAFE_EVOLUTION doc.
-

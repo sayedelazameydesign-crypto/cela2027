@@ -236,6 +236,7 @@
 | port إلى `agi-system` | `tools/agi-system-handoff/port/` (9 ملفات نصية) | `python3 scripts/verify.py` → **6 بوابات PASS في ~3.0s**: سياسة التغيير · حارس «صفر تبعيات» (19 ملفاً، 154 استيراداً: 110 stdlib + 44 محلي + **0 خارجي**) · 86 اختباراً OK · demo `ALL EXPECTATIONS MET: True` · compileall · CLI smoke `finished: VERIFIED`. والتعبئة قِيست في venv معزول: `pip install -e . --no-deps` → `agi-kernel doctor --json` exit 0 |
 | سبب كون التسليم نصاً لا patch/bundle | — | الحارس رفض `git format-patch` (7 مواضع مسافات ذيلية داخل نص مُولَّد) ورفض `git bundle` (ثنائي غير مصرّح). المولّدات لا تدخل Git؛ `port/` شجرة نصية قابلة للحراسة والمراجعة |
 | عائق الدفع | — | `403 Permission … denied to arena-ai-coding-agent[bot]` على `agi-system` → التسليم يُدفَع بيد مالك المستودع عبر `apply-to-agi-system.sh` (‏`apply`/`commit` مُختبران على clone نظيف) |
+| الحارس ضبط مسلّمته الخاصة | — | `git diff --check` في CI رفض `COMMIT_MESSAGE.txt:40: new blank line at EOF` — لأن `git log --format=%B` يترك سطراً فارغاً ختامياً. **فشل في clone نظيف ولم يفشل محلياً** (محلياً قارن الحارس شجرة العمل المصحَّحة، وفي CI قارن الـcommit). دليل عملي على أن البوابة يجب أن تُقاس في clone نظيف بتاريخ كامل، لا في شجرة العمل فقط |
 
 **أهم ما كشفه التطبيق على `agi-system`:** نفس الثابت المخترق هنا (§2.0 `delete_file` غير معلَنة) **سليم هناك** — `filesystem.delete` في `DEFAULT_ALLOWLIST` مع وزن مخاطر وبوابة `allow_delete` صريحة (`core/policy.py:87`). وكذلك لا يوجد هناك fake من النوع الحاجب: **صفر mocks** في 86 اختباراً (كلها على `tempfile` حقيقي)، والـfakes الوحيدة **خصوم مقصودة** (`LyingExecutor` و`CrashingExecutor` في `demo.py`) — أي أن الـfake **موضوع** الاختبار لا **بديل** عن الحد الحقيقي. هذه هي القاعدة المحمولة من §3.
 
@@ -304,6 +305,15 @@ npm run build                    # المتوقع: ✓ Compiled successfully
 # أو باختصار:
 npm run verify
 ```
+
+### إعادة القياس في clone نظيف (إلزامي — الشجرة العاملة وحدها لا تكفي)
+```bash
+rm -rf /tmp/ci-repro && git clone https://github.com/sayedelazameydesign-crypto/cela2027.git /tmp/ci-repro
+cd /tmp/ci-repro && git fetch origin <branch> && git checkout FETCH_HEAD
+git rev-parse --is-shallow-repository     # يجب أن يكون false وإلا فحارس التغيير أعمى
+npm ci --no-fund --no-audit && OPENROUTER_API_KEY="" npm run verify
+```
+هذا هو الفحص الذي كشف عيب `COMMIT_MESSAGE.txt` (§4.1) بعد ما نجح محلياً.
 
 ### إعادة قياس الأدلة الجديدة في هذا التقرير
 ```bash
