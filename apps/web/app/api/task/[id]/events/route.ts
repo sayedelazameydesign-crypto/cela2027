@@ -17,6 +17,6 @@ export async function GET(
   const url = new URL(req.url);
   const after = Number.parseInt(url.searchParams.get("after") ?? "-1", 10);
   const safeAfter = Number.isFinite(after) ? after : -1;
-  const { events, done } = getRuntime().eventsAfter(id, Number.isNaN(safeAfter) ? -1 : safeAfter);
+  const { events, done } = await getRuntime().eventsAfter(id, Number.isNaN(safeAfter) ? -1 : safeAfter);
   return NextResponse.json({ taskId: id, events, done });
 }

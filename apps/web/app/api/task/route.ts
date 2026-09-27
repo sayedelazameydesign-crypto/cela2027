@@ -19,6 +19,10 @@ export async function POST(req: Request) {
   if (goal.length > 4000) {
     return NextResponse.json({ error: "الهدف طويل جداً (4000 حرف كحد أقصى)" }, { status: 400 });
   }
-  const taskId = getRuntime().startTask(goal);
-  return NextResponse.json({ taskId });
+  try {
+    const taskId = await getRuntime().startTask(goal);
+    return NextResponse.json({ taskId });
+  } catch {
+    return NextResponse.json({ error: "تعذر حفظ المهمة" }, { status: 503 });
+  }
 }

@@ -4,78 +4,58 @@ import type { AgentEvent } from "@cela/core";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** GET /api/task/:id/stream — SSE: replay buffer then live events */
+/** SSE: replay and poll the journal for live events across runtime instances. */
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
   const rt = getRuntime();
+  const initial = await rt.eventsAfter(id, -1);
+  let lastSeq = -1;
+  let closed = false;
+  let interval: ReturnType<typeof setInterval> | undefined;
+  const enc = new TextEncoder();
 
   const stream = new ReadableStream({
     start(controller) {
-      const enc = new TextEncoder();
-      let closed = false;
       const send = (event: AgentEvent) => {
-        if (closed) return;
-        try {
-          controller.enqueue(enc.encode(`data: ${JSON.stringify(event)}\n\n`));
-        } catch {
-          closed = true;
-        }
+        if (!closed) controller.enqueue(enc.encode(`data: ${JSON.stringify(event)}\n\n`));
       };
-
-      // replay history
-      for (const e of rt.replay(id)) send(e);
-
-      // already finished?
-      const done = rt.replay(id).some((e) => e.type === "task_finished");
-
-      const unsubscribe = rt.subscribe(id, (e) => {
-        send(e);
-        if (e.type === "task_finished") {
-          setTimeout(() => {
-            if (!closed) {
-              closed = true;
-              try {
-                controller.close();
-              } catch {
-                /* already closed */
-              }
-            }
-          }, 100);
-        }
-      });
-
-      if (done) {
-        // history already contained task_finished; close after flush
-        setTimeout(() => {
-          if (!closed) {
-            closed = true;
-            unsubscribe();
-            try {
-              controller.close();
-            } catch {
-              /* noop */
-            }
-          }
-        }, 150);
+      const close = () => {
+        if (closed) return;
+        closed = true;
+        if (interval) clearInterval(interval);
+        controller.close();
+      };
+      for (const item of initial.events) {
+        send(item.e);
+        lastSeq = item.seq;
+      }
+      if (initial.done) {
+        close();
+        return;
       }
 
-      // heartbeat keeps proxies from closing the stream
-      const hb = setInterval(() => {
-        if (closed) {
-          clearInterval(hb);
-          return;
-        }
-        try {
-          controller.enqueue(enc.encode(": hb\n\n"));
-        } catch {
-          closed = true;
-          clearInterval(hb);
-          unsubscribe();
-        }
-      }, 15_000);
+      let busy = false;
+      interval = setInterval(() => {
+        if (closed || busy) return;
+        busy = true;
+        void rt.eventsAfter(id, lastSeq).then(({ events, done }) => {
+          if (closed) return;
+          for (const item of events) {
+            send(item.e);
+            lastSeq = item.seq;
+          }
+          if (done) close();
+          else controller.enqueue(enc.encode(": hb\n\n"));
+        }).catch(() => close()).finally(() => { busy = false; });
+      }, 1_000);
+      req.signal.addEventListener("abort", close, { once: true });
+    },
+    cancel() {
+      closed = true;
+      if (interval) clearInterval(interval);
     },
   });
 

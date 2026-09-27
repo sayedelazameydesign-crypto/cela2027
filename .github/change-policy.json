@@ -1,13 +1,19 @@
 {
   "classification": "B",
-  "reason": "Implement ReAct retries with per-attempt policy enforcement and independent evidence checks, ProviderFabric planner failover, binary workspace files and Pyodide FS synchronization through additive contracts.",
+  "reason": "Add additive server-side EventJournal persistence and cross-instance task replay, preserving existing polling and file envelopes while documenting serverless execution limits.",
   "protectedChanges": [
+    "apps/web/app/api/task/[id]/events/route.ts",
+    "apps/web/app/api/task/[id]/files/route.ts",
+    "apps/web/app/api/task/[id]/stream/route.ts",
+    "apps/web/app/api/task/route.ts",
     "apps/web/lib/agent-runtime.ts",
     "packages/core/src/events.ts",
     "packages/core/src/executor.ts",
     "packages/core/src/orchestrator.ts",
     "packages/core/src/planner.ts",
-    "packages/core/src/workspace.ts"
+    "packages/core/src/workspace.ts",
+    "packages/store/src/index.ts",
+    "packages/store/src/journal.ts"
   ],
   "allowedBinaryChanges": []
 }

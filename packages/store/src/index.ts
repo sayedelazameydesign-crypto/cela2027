@@ -1,3 +1,5 @@
+export * from "./journal";
+
 /**
  * Persistence layer.
  * Default: MemoryStore (zero config — runs anywhere, incl. Vercel per-instance).
